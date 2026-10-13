@@ -1,0 +1,1018 @@
+:root,
+[data-theme="dark"] {
+  /* Paleta Harley-Davidson Racing: TEMA OSCURO (Garage / Asfalto) */
+  --hd-bg: #0A0C0F;
+  --hd-surface: #12151D;
+  --hd-surface-hover: #1A1F2B;
+  --hd-card: #151922;
+  --hd-card-header: #0E1117;
+  --hd-elevated: #1F2533;
+  --hd-input-bg: #181D27;
+
+  --hd-border: #262E3D;
+  --hd-border-strong: #3A465C;
+  --hd-border-subtle: #1D2431;
+
+  --hd-text-title: #FFFFFF;
+  --hd-text-body: #E2E8F0;
+  --hd-text-muted: #94A3B8;
+  --hd-text-dim: #64748B;
+
+  --hd-orange: #FF5E00;
+  --hd-orange-hover: #FF7726;
+  --hd-orange-dark: #D44E00;
+  --hd-orange-glow: rgba(255, 94, 0, 0.35);
+  --hd-orange-subtle: rgba(255, 94, 0, 0.12);
+
+  --status-success: #10B981;
+  --status-warning: #F59E0B;
+  --status-danger: #EF4444;
+  --status-info: #38BDF8;
+
+  --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"] {
+  /* Paleta Harley-Davidson Racing: TEMA CLARO (Showroom / Cromo Platino) */
+  --hd-bg: #F1F4F8;
+  --hd-surface: #FFFFFF;
+  --hd-surface-hover: #F8FAFC;
+  --hd-card: #FFFFFF;
+  --hd-card-header: #F8FAFC;
+  --hd-elevated: #F1F5F9;
+  --hd-input-bg: #FFFFFF;
+
+  --hd-border: #E2E8F0;
+  --hd-border-strong: #CBD5E1;
+  --hd-border-subtle: #EEF2F6;
+
+  --hd-text-title: #0F172A;
+  --hd-text-body: #1E293B;
+  --hd-text-muted: #475569;
+  --hd-text-dim: #64748B;
+
+  --hd-orange: #FF5E00;
+  --hd-orange-hover: #E05300;
+  --hd-orange-dark: #C94A00;
+  --hd-orange-glow: rgba(255, 94, 0, 0.25);
+  --hd-orange-subtle: rgba(255, 94, 0, 0.08);
+
+  --status-success: #059669;
+  --status-warning: #D97706;
+  --status-danger: #DC2626;
+  --status-info: #0284C7;
+
+  --shadow-card: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-elevated: 0 10px 28px rgba(15, 23, 42, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.15s ease;
+}
+
+html, body {
+  background-color: var(--hd-bg) !important;
+  color: var(--hd-text-body) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* Números y precios tabulares */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, select, textarea {
+  font-family: inherit;
+}
+
+/* Scrollbar adaptativo */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--hd-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--hd-border-strong);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hd-orange);
+}
+
+/* ==========================================================================
+   RESPONSIVE UTILITIES (Mobile & Tablet)
+   ========================================================================== */
+
+/* Métricas: 4 columnas en desktop, 2 en tablet/móvil con minmax(0, 1fr) */
+.hd-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hd-metrics-grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.hd-metrics-grid > div {
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 900px) {
+  .hd-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .hd-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+  .hd-metrics-grid .metric-card {
+    padding: 10px 10px !important;
+  }
+  .hd-metrics-grid .metric-value {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 350px) {
+  .hd-metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Grilla de productos */
+.hd-products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .hd-products-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+}
+
+/* Responsive Modal Grids */
+.hd-form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.hd-form-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 600px) {
+  .hd-form-row-2,
+  .hd-form-row-3 {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+}
+
+/* Visibilidad condicional */
+.hide-on-mobile {
+  display: flex !important;
+}
+
+.show-on-mobile {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+  .show-on-mobile {
+    display: flex !important;
+  }
+}
+
+/* Soporte de Impresión de Ticket Térmico 80mm */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #area-impresion-ticket,
+  #area-impresion-ticket * {
+    visibility: visible;
+  }
+  #area-impresion-ticket {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm !important;
+    max-width: 100% !important;
+    padding: 4mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
+
+/* Cabecera Superior */
+.hd-navbar-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .hd-navbar-inner {
+    padding: 8px 10px !important;
+    gap: 8px !important;
+  }
+}
+
+/* Layout Responsivo para Kardex */
+.kardex-main-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 960px) {
+  .kardex-main-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+  }
+}
+
+/* Selector Móvil de Producto en Kardex */
+.kardex-mobile-selector-trigger {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 961px) {
+  .kardex-mobile-selector-trigger {
+    display: none !important;
+  }
+  .kardex-left-panel {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 960px) {
+  .kardex-mobile-selector-trigger {
+    display: flex !important;
+  }
+  .kardex-left-panel.kardex-panel-collapsed {
+    display: none !important;
+  }
+  .kardex-left-panel.kardex-panel-expanded {
+    display: flex !important;
+  }
+}
+
+/* Tarjeta de Contenedor en Kardex */
+.kardex-card {
+  padding: 16px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .kardex-card {
+    padding: 10px 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* Cabecera del Producto Seleccionado y Acciones */
+.kardex-product-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  border-bottom: 1px solid var(--hd-border);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kardex-product-info {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .kardex-product-header {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .kardex-product-info {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+/* Botones de Acción en Kardex */
+.kardex-actions-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .kardex-actions-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .kardex-actions-grid button {
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    padding: 8px 4px !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    box-sizing: border-box !important;
+  }
+}
+
+/* Grilla de Métricas KPI en Kardex */
+.kardex-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kardex-kpi-grid > div {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 900px) {
+  .kardex-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+  .kardex-kpi-grid > div {
+    padding: 8px 8px !important;
+  }
+}
+
+/* Nivel 2: Fila de Flujo de Operaciones (Compras / Ventas / Devolución) */
+.kardex-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kardex-flow-grid > div {
+  min-width: 0 !important;
+  padding: 6px 2px !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Filtros de la Tabla de Movimientos */
+.kardex-filters-bar {
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .kardex-filters-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 8px 8px !important;
+    gap: 8px !important;
+  }
+}
+
+/* Contenedor de Movimientos e Impresión */
+.kardex-area-impresion {
+  padding: 16px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  .kardex-area-impresion {
+    padding: 8px !important;
+  }
+}
+
+/* Vista Híbrida de Movimientos Kardex (Cards en Móvil, Tabla en Desktop) */
+@media (min-width: 769px) {
+  .kardex-cards-mobile {
+    display: none !important;
+  }
+  .kardex-table-desktop {
+    display: block !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .kardex-cards-mobile {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .kardex-table-desktop {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+  .kardex-table-desktop table {
+    min-width: 0 !important;
+    width: 0 !important;
+  }
+}
+
+/* ==========================================================================
+   CLIENTES & CUENTAS POR COBRAR RESPONSIVE UTILITIES
+   ========================================================================== */
+.clientes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .clientes-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    margin-bottom: 16px !important;
+  }
+  .clientes-header button {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 12px 16px !important;
+  }
+}
+
+/* Grilla de Métricas KPI en Clientes */
+.clientes-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.clientes-kpi-grid > div {
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 900px) {
+  .clientes-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin-bottom: 14px !important;
+  }
+  .clientes-kpi-grid > div {
+    padding: 10px 12px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .clientes-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Barra de Buscador y Filtros en Clientes */
+.clientes-search-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .clientes-search-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    padding: 10px 12px !important;
+  }
+  .clientes-search-input {
+    max-width: 100% !important;
+    width: 100% !important;
+    flex: none !important;
+    height: auto !important;
+  }
+  .clientes-filter-buttons {
+    display: flex !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+}
+
+/* Vista Híbrida: Tabla Desktop vs Tarjetas Móviles */
+@media (min-width: 769px) {
+  .clientes-cards-mobile {
+    display: none !important;
+  }
+  .clientes-table-desktop {
+    display: block !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .clientes-cards-mobile {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .clientes-table-desktop {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+  .clientes-table-desktop table {
+    min-width: 0 !important;
+    width: 0 !important;
+  }
+}
+
+/* Tarjeta Móvil de Cliente */
+.clientes-card-item {
+  background-color: var(--hd-surface);
+  border: 1px solid var(--hd-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.clientes-card-item.con-deuda {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.04) 0%, var(--hd-surface) 100%);
+}
+
+/* ==========================================================================
+   INVENTARIO DE REPUESTOS RESPONSIVE UTILITIES
+   ========================================================================== */
+.inventario-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.inventario-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .inventario-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .inventario-header-actions {
+    width: 100% !important;
+  }
+  .inventario-header-actions button:last-child {
+    flex: 1 !important;
+    justify-content: center !important;
+  }
+}
+
+.inventario-search-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.inventario-search-input-box {
+  flex: 1;
+  min-width: min(100%, 260px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: var(--hd-input-bg);
+  border: 1px solid var(--hd-border-strong);
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+}
+
+.inventario-filter-toggles {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 640px) {
+  .inventario-search-controls {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .inventario-search-input-box {
+    width: 100% !important;
+    min-width: 100% !important;
+    flex: none !important;
+  }
+  .inventario-filter-toggles {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .inventario-filter-toggles button {
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 9px 8px !important;
+  }
+}
+
+/* ==========================================================================
+   COMPRAS & DISTRIBUIDORES RESPONSIVE UTILITIES
+   ========================================================================== */
+.compras-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.compras-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .compras-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .compras-header-actions {
+    width: 100% !important;
+    display: flex !important;
+  }
+  .compras-header-actions > button {
+    flex: 1 !important;
+    justify-content: center !important;
+    padding: 10px 12px !important;
+  }
+}
+
+.compras-chips-distribuidores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 768px) {
+  .compras-chips-distribuidores {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    padding-bottom: 4px !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .compras-chips-distribuidores > button {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+  }
+}
+
+.compras-mobile-floating-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .compras-mobile-floating-bar {
+    display: flex !important;
+    position: fixed;
+    bottom: var(--bottom-nav-height, 64px);
+    left: 0;
+    right: 0;
+    background-color: var(--hd-surface);
+    border-top: 1.5px solid var(--hd-orange);
+    padding: 10px 16px;
+    z-index: 40;
+    align-items: center;
+    justifyContent: space-between;
+    box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    box-sizing: border-box;
+  }
+}
+
+/* Ocultar el indicador flotante de desarrollo de Next.js */
+nextjs-portal,
+[data-nextjs-toast],
+[data-nextjs-dialog-overlay],
+[data-nextjs-route-announcer] {
+  display: none !important;
+}
+
+/* ==========================================================================
+   VARIABLES GLOBALES RESPONSIVE & SAFE AREA
+   ========================================================================== */
+:root {
+  --bottom-nav-height: 64px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Contenedor universal de página con holgura para la barra inferior en móvil */
+.hd-page-container {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+  width: 100%;
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .hd-page-container {
+    padding: 12px 8px calc(var(--bottom-nav-height) + var(--safe-bottom) + 20px) !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+}
+
+/* Utilidad para carruseles y pestañas con scroll táctil sin scrollbar tosca */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.touch-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Área táctil mínima recomendada para botones en móvil */
+@media (max-width: 768px) {
+  .touch-target {
+    min-height: 42px !important;
+  }
+}
+
+/* ==========================================================================
+   PUNTO DE VENTA (POS) RESPONSIVE UTILITIES
+   ========================================================================== */
+.pos-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 460px);
+  gap: 18px;
+  align-items: start;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1024px) {
+  .pos-main-grid {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 14px;
+  }
+}
+
+@media (max-width: 768px) {
+  .pos-main-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+}
+
+.pos-panel-catalogo,
+.pos-panel-carrito {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Grilla de productos en catálogo POS: 2 columnas en móvil con minmax(0, 1fr), fluido en desktop */
+.pos-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .pos-catalog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 350px) {
+  .pos-catalog-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* Selector de métodos de pago en PaymentModal */
+.pos-payment-methods-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 560px) {
+  .pos-payment-methods-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+}
+@media (max-width: 380px) {
+  .pos-payment-methods-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+}
+
+/* ==========================================================================
+   POS MOBILE VIEW SWITCHER & FLOATING CART BAR
+   ========================================================================== */
+@media (min-width: 769px) {
+  .pos-mobile-segmented {
+    display: none !important;
+  }
+  .pos-mobile-cart-float {
+    display: none !important;
+  }
+  .pos-mobile-back-catalog {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .pos-view-catalogo .pos-panel-carrito {
+    display: none !important;
+  }
+  .pos-view-carrito .pos-panel-catalogo {
+    display: none !important;
+  }
+  .pos-mobile-segmented {
+    display: flex !important;
+  }
+  .pos-mobile-cart-float {
+    display: flex !important;
+  }
+  .pos-mobile-back-catalog {
+    display: inline-flex !important;
+  }
+}
+
+.pos-mobile-cart-float {
+  position: fixed;
+  bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + 10px);
+  left: 14px;
+  right: 14px;
+  max-width: 500px;
+  margin: 0 auto;
+  z-index: 50;
+  background-color: var(--hd-orange);
+  color: #FFFFFF;
+  padding: 12px 18px;
+  border-radius: 999px;
+  box-shadow: 0 4px 22px rgba(255, 106, 0, 0.45);
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: none;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  animation: posFloatIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes posFloatIn {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
