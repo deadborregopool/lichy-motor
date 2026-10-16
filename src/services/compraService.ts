@@ -271,3 +271,87 @@ export async function obtenerHistorialCompras(limite: number = 30): Promise<Comp
 
   return (data || []) as unknown as CompraConDetalles[];
 }
+
+export interface ItemCorreccionCostoCompra {
+  detalle_id: number;
+  producto_id: number;
+  producto_nombre: string;
+  cantidad: number;
+  costo_actual: number;
+  nuevo_costo_unitario: number;
+  precio_venta_actual?: number;
+  nuevo_precio_venta?: number;
+}
+
+/**
+ * Corrige o regulariza los costos y precios de una compra ya registrada (ej. boletas de conteo inicial).
+ */
+export async function actualizarCostosCompra(
+  compraId: number,
+  items: ItemCorreccionCostoCompra[]
+): Promise<void> {
+  let nuevoTotalCompra = 0;
+
+  for (const item of items) {
+    const nuevoCosto = Math.max(0, Number(item.nuevo_costo_unitario) || 0);
+    const subtotal = Number((item.cantidad * nuevoCosto).toFixed(2));
+    nuevoTotalCompra += subtotal;
+
+    // 1. Actualizar detalle_compras
+    const { error: errDetalle } = await supabase
+      .from('detalle_compras')
+      .update({
+        costo_unitario: nuevoCosto,
+        subtotal: subtotal,
+      })
+      .eq('id', item.detalle_id);
+
+    if (errDetalle) {
+      console.error(`Error al actualizar detalle_compra ${item.detalle_id}:`, errDetalle);
+    }
+
+    // 2. Actualizar productos (costo_unitario y opcionalmente precio_venta)
+    const updateProductoPayload: any = {
+      costo_unitario: nuevoCosto,
+    };
+    if (item.nuevo_precio_venta !== undefined && Number(item.nuevo_precio_venta) > 0) {
+      updateProductoPayload.precio_venta = Number(item.nuevo_precio_venta);
+    }
+
+    const { error: errProd } = await supabase
+      .from('productos')
+      .update(updateProductoPayload)
+      .eq('id', item.producto_id);
+
+    if (errProd) {
+      console.error(`Error al actualizar producto ${item.producto_id}:`, errProd);
+    }
+
+    // 3. Actualizar Kardex asociado a esta compra si existe
+    try {
+      await supabase
+        .from('movimientos_kardex')
+        .update({
+          costo_unitario: nuevoCosto,
+          precio_venta: item.nuevo_precio_venta ? Number(item.nuevo_precio_venta) : undefined,
+        })
+        .eq('producto_id', item.producto_id)
+        .eq('tipo_operacion', 'COMPRA');
+    } catch (e) {
+      console.warn('Aviso: no se pudo actualizar kardex:', e);
+    }
+  }
+
+  // 4. Actualizar total de la cabecera de la compra
+  const { error: errCompra } = await supabase
+    .from('compras')
+    .update({
+      total: Number(nuevoTotalCompra.toFixed(2)),
+    })
+    .eq('id', compraId);
+
+  if (errCompra) {
+    console.error(`Error al actualizar cabecera de compra ${compraId}:`, errCompra);
+    throw errCompra;
+  }
+}

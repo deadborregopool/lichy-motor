@@ -1180,9 +1180,15 @@ export default function PosPage() {
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--hd-text-title)' }} className="tabular">
-                            {formatearSoles(prod.precio_venta)}
-                          </span>
+                          {Number(prod.precio_venta) <= 0 ? (
+                            <span style={{ fontSize: 10, fontWeight: 900, color: '#f87171', backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)', padding: '2px 5px', borderRadius: 4 }}>
+                              ⚠️ Sin Precio
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--hd-text-title)' }} className="tabular">
+                              {formatearSoles(prod.precio_venta)}
+                            </span>
+                          )}
 
                           <button
                             type="button"
@@ -1449,32 +1455,51 @@ export default function PosPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setModalCobroAbierto(true)}
-                disabled={carrito.length === 0}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  borderRadius: 8,
-                  backgroundColor: carrito.length === 0 ? 'var(--hd-elevated)' : 'var(--hd-orange)',
-                  color: carrito.length === 0 ? 'var(--hd-text-dim)' : '#FFFFFF',
-                  border: 'none',
-                  fontSize: 16,
-                  fontWeight: 900,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  cursor: carrito.length === 0 ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  boxShadow: carrito.length === 0 ? 'none' : '0 4px 20px var(--hd-orange-glow)',
-                }}
-              >
-                <Banknote size={20} strokeWidth={2.5} />
-                <span>Cobrar Mostrador ({formatearSoles(totalCarrito)})</span>
-              </button>
+              {(() => {
+                const itemSinPrecio = carrito.find((it) => Number(it.precio_unitario) <= 0);
+                const puedeCobrar = carrito.length > 0 && !itemSinPrecio;
+
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!puedeCobrar) {
+                        if (itemSinPrecio) {
+                          mostrarNotificacion(`Debes fijar el precio de venta de "${itemSinPrecio.producto.nombre}" en el carrito antes de cobrar.`, 'error');
+                        }
+                        return;
+                      }
+                      setModalCobroAbierto(true);
+                    }}
+                    disabled={!puedeCobrar}
+                    style={{
+                      width: '100%',
+                      padding: '14px',
+                      borderRadius: 8,
+                      backgroundColor: !puedeCobrar ? 'var(--hd-elevated)' : 'var(--hd-orange)',
+                      color: !puedeCobrar ? (itemSinPrecio ? '#f87171' : 'var(--hd-text-dim)') : '#FFFFFF',
+                      border: itemSinPrecio ? '1px solid rgba(239, 68, 68, 0.4)' : 'none',
+                      fontSize: itemSinPrecio ? 13 : 16,
+                      fontWeight: 900,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      cursor: !puedeCobrar ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      boxShadow: !puedeCobrar ? 'none' : '0 4px 20px var(--hd-orange-glow)',
+                    }}
+                  >
+                    <Banknote size={20} strokeWidth={2.5} />
+                    <span>
+                      {itemSinPrecio
+                        ? `⚠️ Fijar precio a "${itemSinPrecio.producto.nombre}"`
+                        : `Cobrar Mostrador (${formatearSoles(totalCarrito)})`}
+                    </span>
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

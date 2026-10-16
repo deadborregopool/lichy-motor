@@ -6,7 +6,8 @@ import { CATEGORIAS_MOTO, UNIDADES_MEDIDA } from '@/lib/constants';
 import { crearProducto, actualizarProducto, eliminarProducto, DatosNuevoProducto } from '@/services/productService';
 import { obtenerDistribuidores } from '@/services/distribuidorService';
 import { formatearSoles } from '@/lib/formatters';
-import { X, Upload, Trash2, Fuel, Package, Sparkles, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import { registrarMovimientoKardex } from '@/services/kardexService';
+import { X, Upload, Trash2, Fuel, Package, Sparkles, Image as ImageIcon, AlertCircle, Unlock, Lock } from 'lucide-react';
 
 interface ProductModalProps {
   abierto: boolean;
@@ -43,6 +44,7 @@ export default function ProductModal({
   const [archivoFoto, setArchivoFoto] = useState<File | null>(null);
   const [previewFoto, setPreviewFoto] = useState<string | null>(null);
 
+  const [desbloquearCostoManual, setDesbloquearCostoManual] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [eliminando, setEliminando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -72,7 +74,9 @@ export default function ProductModal({
       setStockActual(productoEditar.stock_actual);
       setCapacidadEnvase(productoEditar.capacidad_envase ?? (productoEditar.unidad_medida === 'balde' ? 20 : 1));
       setVolumenEnUso(productoEditar.volumen_en_uso ?? 0);
+      const costoNum = Number(productoEditar.costo_unitario) || 0;
       setCostoUnitario(productoEditar.costo_unitario);
+      setDesbloquearCostoManual(costoNum === 0);
       setPrecioVenta(productoEditar.precio_venta);
       setImagenUrl(productoEditar.imagen_url || '');
       setProveedorId(productoEditar.proveedor_id || '');
@@ -89,6 +93,7 @@ export default function ProductModal({
       setVolumenEnUso(0);
       setStockActual(0);
       setCostoUnitario(0);
+      setDesbloquearCostoManual(true);
       setPrecioVenta(0);
       setImagenUrl('');
       setProveedorId('');
@@ -141,7 +146,7 @@ export default function ProductModal({
         stock_actual: productoEditar ? Number(productoEditar.stock_actual) || 0 : 0,
         capacidad_envase: esAceiteReal && capacidadEnvase !== '' ? Number(capacidadEnvase) : null,
         volumen_en_uso: esAceiteReal && productoEditar ? Number(productoEditar.volumen_en_uso) || 0 : 0,
-        costo_unitario: productoEditar ? (Number(costoUnitario) || 0) : 0,
+        costo_unitario: Number(costoUnitario) || 0,
         precio_venta: Number(precioVenta) || 0,
         imagen_url: imagenUrl.trim() || null,
         proveedor_id: proveedorId !== '' ? Number(proveedorId) : null,
@@ -149,6 +154,30 @@ export default function ProductModal({
 
       if (productoEditar) {
         await actualizarProducto(productoEditar.id, payload, archivoFoto);
+
+        // Si el costo cambió manualmente en edición, registrar trazabilidad en Kardex
+        const costoPrevio = Number(productoEditar.costo_unitario) || 0;
+        const costoNuevo = Number(costoUnitario) || 0;
+        if (costoPrevio !== costoNuevo) {
+          try {
+            await registrarMovimientoKardex({
+              producto_id: productoEditar.id,
+              tipo_operacion: 'AJUSTE',
+              tipo_stock: productoEditar.unidad_medida === 'litro' ? 'GRANEL' : 'CERRADO',
+              comprobante_tipo: 'AJUSTE',
+              comprobante_numero: 'ADJ-COSTO',
+              cantidad_entrada: 0,
+              cantidad_salida: 0,
+              saldo_resultante: Number(productoEditar.stock_actual) || 0,
+              costo_unitario: costoNuevo,
+              precio_venta: Number(precioVenta) || 0,
+              usuario_nombre: 'Administrador',
+              motivo: `Ajuste manual de costo: de S/ ${costoPrevio.toFixed(2)} a S/ ${costoNuevo.toFixed(2)} (Conteo / Corrección)`,
+            });
+          } catch (e) {
+            console.warn('Aviso: no se pudo registrar movimiento de ajuste en kardex:', e);
+          }
+        }
       } else {
         await crearProducto(payload, archivoFoto);
       }
@@ -686,10 +715,63 @@ export default function ProductModal({
 
             {esAdmin && (
               <div>
-                <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-muted)', textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>
-                  {productoEditar ? 'Costo de Reposición (S/)' : 'Costo de Compra (S/)'}
-                </label>
-                {productoEditar ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                  <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
+                    {productoEditar ? 'Costo de Reposición (S/)' : 'Costo de Compra (S/)'}
+                  </label>
+                  {productoEditar && numCosto > 0 && !desbloquearCostoManual && (
+                    <button
+                      type="button"
+                      onClick={() => setDesbloquearCostoManual(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--hd-orange)',
+                        fontSize: 10,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        textTransform: 'uppercase',
+                        padding: 0,
+                      }}
+                    >
+                      <Unlock size={11} />
+                      <span>Modificar</span>
+                    </button>
+                  )}
+                </div>
+
+                {(!productoEditar || numCosto === 0 || desbloquearCostoManual) ? (
+                  <div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={costoUnitario}
+                      onChange={(e) => setCostoUnitario(e.target.value)}
+                      placeholder="0.00"
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        backgroundColor: 'var(--hd-input-bg)',
+                        border: numCosto === 0 ? '1.5px dashed var(--hd-orange)' : '1.5px solid var(--hd-orange)',
+                        borderRadius: '6px',
+                        fontSize: 14,
+                        fontWeight: 900,
+                        color: 'var(--hd-text-title)',
+                        height: 42,
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    {numCosto === 0 && (
+                      <span style={{ fontSize: 10, color: 'var(--hd-orange)', fontWeight: 700, display: 'block', marginTop: 3 }}>
+                        ⚠️ Sin costo fijado (Ingresar costo de reposición)
+                      </span>
+                    )}
+                  </div>
+                ) : (
                   <div
                     style={{
                       width: '100%',
@@ -701,34 +783,15 @@ export default function ProductModal({
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       height: 42,
+                      boxSizing: 'border-box',
                     }}
                   >
-                    <span style={{ fontSize: 14, fontWeight: 900, color: numCosto > 0 ? 'var(--hd-text-title)' : 'var(--hd-text-dim)' }} className="tabular">
-                      {numCosto > 0 ? formatearSoles(numCosto) : '⏳ Sin compras'}
+                    <span style={{ fontSize: 14, fontWeight: 900, color: 'var(--hd-text-title)' }} className="tabular">
+                      {formatearSoles(numCosto)}
                     </span>
-                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--hd-orange)', textTransform: 'uppercase' }}>
-                      🔒 Vía Compras
-                    </span>
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      backgroundColor: 'var(--hd-elevated)',
-                      border: '1px dashed var(--hd-border-strong)',
-                      borderRadius: '6px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      height: 42,
-                    }}
-                  >
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--hd-text-dim)' }}>
-                      ⏳ S/ 0.00 (Pendiente)
-                    </span>
-                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--hd-orange)', textTransform: 'uppercase' }}>
-                      Se fija al comprar
+                    <span style={{ fontSize: 9, fontWeight: 800, color: 'var(--hd-text-dim)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <Lock size={10} />
+                      <span>Vía Compras</span>
                     </span>
                   </div>
                 )}

@@ -22,8 +22,9 @@ export default function CartItemRow({
   onActualizarPrecio,
   onEliminar,
 }: CartItemRowProps) {
-  const [editandoPrecio, setEditandoPrecio] = useState(false);
-  const [precioInput, setPrecioInput] = useState(item.precio_unitario.toString());
+  const esPrecioCero = Number(item.precio_unitario) <= 0;
+  const [editandoPrecio, setEditandoPrecio] = useState(esPrecioCero);
+  const [precioInput, setPrecioInput] = useState(item.precio_unitario > 0 ? item.precio_unitario.toString() : '');
 
   const handleGuardarPrecio = () => {
     const nuevo = parseFloat(precioInput);
@@ -296,21 +297,21 @@ export default function CartItemRow({
             <button
               type="button"
               onClick={() => {
-                setPrecioInput(item.precio_unitario.toString());
+                setPrecioInput(item.precio_unitario > 0 ? item.precio_unitario.toString() : '');
                 setEditandoPrecio(true);
               }}
-              title="Clic para editar precio de venta"
+              title="Clic para fijar precio de venta"
               style={{
-                backgroundColor: 'var(--hd-surface)',
-                border: '1px solid var(--hd-border)',
-                color: 'var(--hd-text-title)',
+                backgroundColor: item.precio_unitario <= 0 ? 'rgba(239, 68, 68, 0.15)' : 'var(--hd-surface)',
+                border: item.precio_unitario <= 0 ? '1.5px solid var(--status-danger)' : '1px solid var(--hd-border)',
+                color: item.precio_unitario <= 0 ? 'var(--status-danger)' : 'var(--hd-text-title)',
                 fontSize: 11,
-                fontWeight: 700,
+                fontWeight: 800,
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 5,
-                padding: '3px 8px',
+                padding: '4px 8px',
                 borderRadius: 5,
                 transition: 'all 0.15s ease',
               }}
@@ -319,12 +320,12 @@ export default function CartItemRow({
                 e.currentTarget.style.color = 'var(--hd-orange)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--hd-border)';
-                e.currentTarget.style.color = 'var(--hd-text-title)';
+                e.currentTarget.style.borderColor = item.precio_unitario <= 0 ? 'var(--status-danger)' : 'var(--hd-border)';
+                e.currentTarget.style.color = item.precio_unitario <= 0 ? 'var(--status-danger)' : 'var(--hd-text-title)';
               }}
             >
-              <span>x {formatearSoles(item.precio_unitario)}</span>
-              <Edit3 size={11} color="var(--hd-orange)" />
+              <span>{item.precio_unitario <= 0 ? '⚠️ FIJAR PRECIO' : `x ${formatearSoles(item.precio_unitario)}`}</span>
+              <Edit3 size={11} color={item.precio_unitario <= 0 ? 'var(--status-danger)' : 'var(--hd-orange)'} />
             </button>
           )}
         </div>

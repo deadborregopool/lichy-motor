@@ -14,8 +14,10 @@ import {
   registrarCompra,
   calcularCostoPromedio,
   obtenerHistorialCompras,
+  actualizarCostosCompra,
   ItemEntradaCompra,
   CompraConDetalles,
+  ItemCorreccionCostoCompra,
 } from '@/services/compraService';
 import { Producto, Proveedor } from '@/lib/supabase';
 import { formatearSoles } from '@/lib/formatters';
@@ -39,6 +41,7 @@ import {
   X,
   ExternalLink,
   Edit2,
+  Edit3,
   Sparkles,
   Layers,
   Check,
@@ -91,6 +94,47 @@ export default function ComprasPage() {
   // Filtro en Historial
   const [filtroDistribuidorHistorial, setFiltroDistribuidorHistorial] = useState<number | ''>('');
   const [busquedaHistorial, setBusquedaHistorial] = useState<string>('');
+
+  // Modal Corregir Costos de Compra
+  const [compraCorregir, setCompraCorregir] = useState<CompraConDetalles | null>(null);
+  const [itemsCorreccion, setItemsCorreccion] = useState<ItemCorreccionCostoCompra[]>([]);
+  const [guardandoCorreccion, setGuardandoCorreccion] = useState<boolean>(false);
+
+  const abrirModalCorregirCostos = (compra: CompraConDetalles) => {
+    setCompraCorregir(compra);
+    const items: ItemCorreccionCostoCompra[] = (compra.detalle_compras || []).map((det) => {
+      const prodAsoc = productos.find((p) => p.id === det.producto_id);
+      return {
+        detalle_id: det.id,
+        producto_id: det.producto_id,
+        producto_nombre: det.productos?.nombre || prodAsoc?.nombre || `Producto #${det.producto_id}`,
+        cantidad: det.cantidad,
+        costo_actual: det.costo_unitario,
+        nuevo_costo_unitario: det.costo_unitario,
+        precio_venta_actual: prodAsoc?.precio_venta || (det.productos as any)?.precio_venta || 0,
+        nuevo_precio_venta: prodAsoc?.precio_venta || (det.productos as any)?.precio_venta || 0,
+      };
+    });
+    setItemsCorreccion(items);
+  };
+
+  const handleGuardarCorreccion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!compraCorregir) return;
+
+    try {
+      setGuardandoCorreccion(true);
+      await actualizarCostosCompra(compraCorregir.id, itemsCorreccion);
+      setMensajeExito(`¡Costos y precios actualizados con éxito para ${compraCorregir.numero_comprobante || 'Compra #' + compraCorregir.id}!`);
+      setCompraCorregir(null);
+      await cargarDatos();
+    } catch (err: any) {
+      console.error('Error al corregir costos:', err);
+      alert('Error al actualizar costos: ' + (err?.message || 'Error desconocido'));
+    } finally {
+      setGuardandoCorreccion(false);
+    }
+  };
 
   const cargarDatos = async () => {
     try {
@@ -2599,6 +2643,32 @@ export default function ComprasPage() {
                           Nota: {compra.notas}
                         </div>
                       )}
+
+                      {/* Botón para Asignar / Corregir Costos de la Compra */}
+                      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid var(--hd-border)', paddingTop: 10 }}>
+                        <button
+                          type="button"
+                          onClick={() => abrirModalCorregirCostos(compra)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 12px',
+                            backgroundColor: 'var(--hd-orange-subtle)',
+                            border: '1px solid var(--hd-orange)',
+                            color: 'var(--hd-orange)',
+                            borderRadius: '6px',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            textTransform: 'uppercase',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Edit3 size={13} />
+                          <span>Asignar / Corregir Costos</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -2850,6 +2920,231 @@ export default function ComprasPage() {
           await cargarDatos();
         }}
       />
+
+      {/* MODAL CORREGIR / ASIGNAR COSTOS DE COMPRA */}
+      {compraCorregir && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: 14,
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--hd-surface)',
+              border: '2px solid var(--hd-orange)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: 640,
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.8)',
+              padding: 20,
+              boxSizing: 'border-box',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Edit3 size={20} color="var(--hd-orange)" />
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, textTransform: 'uppercase', color: 'var(--hd-text-title)', margin: 0 }}>
+                    Asignar / Corregir Costos
+                  </h3>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    Comprobante: #{compraCorregir.numero_comprobante || compraCorregir.id} · {compraCorregir.proveedores?.nombre || 'Proveedor'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompraCorregir(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--hd-text-dim)', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: 12, color: 'var(--hd-text-muted)', marginBottom: 16 }}>
+              Ajusta los costos unitarios de compra y precios de venta para los repuestos de esta entrada. Al guardar, el catálogo, Kardex y total de la compra se actualizarán automáticamente.
+            </p>
+
+            <form onSubmit={handleGuardarCorreccion}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+                {itemsCorreccion.map((item, idx) => {
+                  const subtotalItem = Number((item.cantidad * item.nuevo_costo_unitario).toFixed(2));
+                  return (
+                    <div
+                      key={item.detalle_id}
+                      style={{
+                        backgroundColor: 'var(--hd-elevated)',
+                        border: '1px solid var(--hd-border)',
+                        borderRadius: '8px',
+                        padding: 12,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--hd-text-title)', marginBottom: 8 }}>
+                        {item.producto_nombre}
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, alignItems: 'center' }}>
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 800, color: 'var(--hd-text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>
+                            Cant. Ingresada
+                          </label>
+                          <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--hd-text-title)', padding: '6px 0' }} className="tabular">
+                            {item.cantidad} unid.
+                          </div>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 800, color: 'var(--hd-orange)', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>
+                            Costo Unitario (S/) *
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min="0"
+                            step="0.1"
+                            value={item.nuevo_costo_unitario}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setItemsCorreccion((prev) => {
+                                const copia = [...prev];
+                                copia[idx] = { ...copia[idx], nuevo_costo_unitario: val };
+                                return copia;
+                              });
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '7px 10px',
+                              backgroundColor: 'var(--hd-input-bg)',
+                              border: item.nuevo_costo_unitario === 0 ? '1.5px dashed var(--hd-orange)' : '1px solid var(--hd-border)',
+                              borderRadius: '6px',
+                              fontSize: 13,
+                              fontWeight: 900,
+                              color: 'var(--hd-text-title)',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: 10, fontWeight: 800, color: 'var(--hd-text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>
+                            Precio Venta (S/)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={item.nuevo_precio_venta ?? ''}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              setItemsCorreccion((prev) => {
+                                const copia = [...prev];
+                                copia[idx] = { ...copia[idx], nuevo_precio_venta: val };
+                                return copia;
+                              });
+                            }}
+                            placeholder="Ej. 28.00"
+                            style={{
+                              width: '100%',
+                              padding: '7px 10px',
+                              backgroundColor: 'var(--hd-input-bg)',
+                              border: '1px solid var(--hd-border)',
+                              borderRadius: '6px',
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: 'var(--hd-text-title)',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                          <label style={{ fontSize: 10, fontWeight: 800, color: 'var(--hd-text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: 3 }}>
+                            Subtotal Costo
+                          </label>
+                          <div style={{ fontSize: 14, fontWeight: 900, color: 'var(--hd-orange)' }} className="tabular">
+                            {formatearSoles(subtotalItem)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Total recalculado y botones */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 16px',
+                  backgroundColor: 'var(--hd-elevated)',
+                  borderRadius: '8px',
+                  marginBottom: 16,
+                  border: '1px solid var(--hd-border)',
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
+                  Nuevo Total de la Compra:
+                </span>
+                <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--hd-orange)' }} className="tabular">
+                  {formatearSoles(itemsCorreccion.reduce((acc, it) => acc + (it.cantidad * (Number(it.nuevo_costo_unitario) || 0)), 0))}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setCompraCorregir(null)}
+                  style={{
+                    flex: 1,
+                    padding: '11px',
+                    borderRadius: '6px',
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1px solid var(--hd-border)',
+                    color: 'var(--hd-text-muted)',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoCorreccion}
+                  style={{
+                    flex: 2,
+                    padding: '11px',
+                    borderRadius: '6px',
+                    backgroundColor: 'var(--hd-orange)',
+                    border: 'none',
+                    color: '#FFFFFF',
+                    fontSize: 13,
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    cursor: guardandoCorreccion ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {guardandoCorreccion ? 'Guardando Costos...' : 'Guardar y Actualizar Catálogo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
