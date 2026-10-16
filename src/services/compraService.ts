@@ -362,3 +362,98 @@ export async function actualizarCostosCompra(
     throw errCompra;
   }
 }
+
+export interface DatosEditarCabeceraCompra {
+  compra_id: number;
+  numero_comprobante?: string | null;
+  tipo_comprobante?: string;
+  proveedor_id?: number;
+  notas?: string | null;
+}
+
+/**
+ * Actualiza los datos de cabecera de una compra (número de serie/factura, tipo, proveedor, notas)
+ * y sincroniza la referencia en los movimientos de Kardex correspondientes.
+ */
+export async function actualizarCabeceraCompra(
+  datos: DatosEditarCabeceraCompra
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. Obtener la compra actual para saber el número antiguo
+    const { data: compraActual, error: errFetch } = await supabase
+      .from('compras')
+      .select('id, numero_comprobante, proveedor_id')
+      .eq('id', datos.compra_id)
+      .single();
+
+    if (errFetch || !compraActual) {
+      return { success: false, error: 'Compra no encontrada.' };
+    }
+
+    const numAntiguo = compraActual.numero_comprobante || `COM-${datos.compra_id}`;
+    const nuevoNum = datos.numero_comprobante ? datos.numero_comprobante.trim() : null;
+    const nuevoTipo = (datos.tipo_comprobante || 'factura').toLowerCase();
+
+    // 2. Actualizar cabecera de la compra
+    const updatePayload: any = {
+      numero_comprobante: nuevoNum,
+      tipo_comprobante: nuevoTipo,
+    };
+    if (datos.proveedor_id) {
+      updatePayload.proveedor_id = datos.proveedor_id;
+    }
+    if (datos.notas !== undefined) {
+      updatePayload.notas = datos.notas ? datos.notas.trim() : null;
+    }
+
+    const { error: errUpdate } = await supabase
+      .from('compras')
+      .update(updatePayload)
+      .eq('id', datos.compra_id);
+
+    if (errUpdate) {
+      console.error('Error al actualizar cabecera de compra:', errUpdate);
+      return { success: false, error: errUpdate.message };
+    }
+
+    // 3. Obtener nombre del proveedor para etiqueta de Kardex
+    let nombreProv = 'Proveedor';
+    const provIdParaKardex = datos.proveedor_id || compraActual.proveedor_id;
+    if (provIdParaKardex) {
+      const { data: provData } = await supabase
+        .from('proveedores')
+        .select('nombre, empresa')
+        .eq('id', provIdParaKardex)
+        .single();
+      nombreProv = provData?.empresa || provData?.nombre || 'Proveedor';
+    }
+
+    const etiquetaProveedor =
+      nombreProv && !nombreProv.toLowerCase().includes('casual')
+        ? `Proveedor: ${nombreProv}`
+        : 'Compra por 3eros';
+
+    // 4. Actualizar movimientos de Kardex asociados
+    const kardexComprobanteNumero = nuevoNum || `COM-${datos.compra_id}`;
+    const kardexMotivo = `${etiquetaProveedor} (Doc: ${nuevoNum || 'S/N'})`;
+
+    try {
+      await supabase
+        .from('movimientos_kardex')
+        .update({
+          comprobante_numero: kardexComprobanteNumero,
+          comprobante_tipo: nuevoTipo.toUpperCase(),
+          motivo: kardexMotivo,
+        })
+        .eq('tipo_operacion', 'COMPRA')
+        .or(`comprobante_numero.eq.${numAntiguo},comprobante_numero.eq.COM-${datos.compra_id}`);
+    } catch (kardexErr) {
+      console.warn('Aviso: no se pudo actualizar kardex asociado a la compra:', kardexErr);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Excepción al actualizar cabecera de compra:', err);
+    return { success: false, error: err.message || 'Error desconocido' };
+  }
+}

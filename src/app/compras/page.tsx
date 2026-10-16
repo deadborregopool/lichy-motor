@@ -15,6 +15,7 @@ import {
   calcularCostoPromedio,
   obtenerHistorialCompras,
   actualizarCostosCompra,
+  actualizarCabeceraCompra,
   ItemEntradaCompra,
   CompraConDetalles,
   ItemCorreccionCostoCompra,
@@ -133,6 +134,52 @@ export default function ComprasPage() {
       alert('Error al actualizar costos: ' + (err?.message || 'Error desconocido'));
     } finally {
       setGuardandoCorreccion(false);
+    }
+  };
+
+  // Modal Editar Cabecera de Compra (Factura/Serie/Proveedor/Notas)
+  const [compraEditarCabecera, setCompraEditarCabecera] = useState<CompraConDetalles | null>(null);
+  const [editTipoComp, setEditTipoComp] = useState<string>('factura');
+  const [editNumComp, setEditNumComp] = useState<string>('');
+  const [editProvId, setEditProvId] = useState<number>(0);
+  const [editNotas, setEditNotas] = useState<string>('');
+  const [guardandoCabecera, setGuardandoCabecera] = useState<boolean>(false);
+
+  const abrirModalEditarCabecera = (compra: CompraConDetalles) => {
+    setCompraEditarCabecera(compra);
+    setEditTipoComp(compra.tipo_comprobante || 'factura');
+    setEditNumComp(compra.numero_comprobante || '');
+    setEditProvId(compra.proveedor_id || 0);
+    setEditNotas(compra.notas || '');
+  };
+
+  const handleGuardarCabecera = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!compraEditarCabecera) return;
+
+    try {
+      setGuardandoCabecera(true);
+      const res = await actualizarCabeceraCompra({
+        compra_id: compraEditarCabecera.id,
+        tipo_comprobante: editTipoComp,
+        numero_comprobante: editNumComp.trim() || null,
+        proveedor_id: editProvId || undefined,
+        notas: editNotas.trim() || null,
+      });
+
+      if (!res.success) {
+        alert('Error al actualizar comprobante: ' + (res.error || 'Error desconocido'));
+        return;
+      }
+
+      setMensajeExito(`¡Comprobante actualizado con éxito para Compra #${compraEditarCabecera.id}!`);
+      setCompraEditarCabecera(null);
+      await cargarDatos();
+    } catch (err: any) {
+      console.error('Error al actualizar comprobante:', err);
+      alert('Error al actualizar comprobante: ' + (err?.message || 'Error desconocido'));
+    } finally {
+      setGuardandoCabecera(false);
     }
   };
 
@@ -383,6 +430,13 @@ export default function ComprasPage() {
     if (itemsEntrada.length === 0) {
       setErrorCompra('Agrega al menos un repuesto o lubricante a la lista de entrada.');
       return;
+    }
+
+    if ((tipoComprobante === 'factura' || tipoComprobante === 'boleta') && !numeroComprobante.trim()) {
+      const confirmar = confirm(
+        `⚠️ Estás a punto de registrar una ${tipoComprobante.toUpperCase()} sin número de serie / comprobante.\n\n¿Deseas guardarla de todas formas o prefieres escribir el número primero?\n(Haz clic en Cancelar para escribir el número ahora)`
+      );
+      if (!confirmar) return;
     }
 
     try {
@@ -2645,9 +2699,23 @@ export default function ComprasPage() {
                             >
                               {compra.tipo_comprobante || 'Compra'}
                             </span>
-                            {compra.numero_comprobante && (
+                            {compra.numero_comprobante ? (
                               <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--hd-text-title)' }}>
                                 #{compra.numero_comprobante}
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                  color: 'var(--status-danger)',
+                                  border: '1px solid var(--status-danger)',
+                                  padding: '2px 8px',
+                                  borderRadius: 4,
+                                }}
+                              >
+                                ⚠️ Sin N° de Factura / Serie
                               </span>
                             )}
                           </div>
@@ -2701,8 +2769,31 @@ export default function ComprasPage() {
                         </div>
                       )}
 
-                      {/* Botón para Asignar / Corregir Costos de la Compra */}
-                      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid var(--hd-border)', paddingTop: 10 }}>
+                      {/* Botones de Acción de la Compra */}
+                      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid var(--hd-border)', paddingTop: 10, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => abrirModalEditarCabecera(compra)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 12px',
+                            backgroundColor: 'var(--hd-elevated)',
+                            border: '1.5px solid var(--hd-border-strong)',
+                            color: 'var(--hd-text-title)',
+                            borderRadius: '6px',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            textTransform: 'uppercase',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <FileText size={13} color="var(--hd-orange)" />
+                          <span>Editar Factura / Serie</span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => abrirModalCorregirCostos(compra)}
@@ -2977,6 +3068,207 @@ export default function ComprasPage() {
           await cargarDatos();
         }}
       />
+
+      {/* MODAL EDITAR CABECERA DE COMPROBANTE / FACTURA */}
+      {compraEditarCabecera && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            padding: 14,
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--hd-surface)',
+              border: '2px solid var(--hd-orange)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: 500,
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.8)',
+              padding: 22,
+              boxSizing: 'border-box',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <FileText size={22} color="var(--hd-orange)" />
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, textTransform: 'uppercase', color: 'var(--hd-text-title)', margin: 0 }}>
+                    Editar Datos del Comprobante
+                  </h3>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    Entrada #{compraEditarCabecera.id} · Total: {formatearSoles(compraEditarCabecera.total)}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompraEditarCabecera(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--hd-text-dim)', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: 12, color: 'var(--hd-text-muted)', marginBottom: 18 }}>
+              Corrige o añade el número de serie de la factura, el tipo de documento o el proveedor. Se actualizará también el registro de Kardex de almacén.
+            </p>
+
+            <form onSubmit={handleGuardarCabecera} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                  Tipo de Comprobante
+                </label>
+                <select
+                  value={editTipoComp}
+                  onChange={(e) => setEditTipoComp(e.target.value)}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'var(--hd-input-bg)',
+                    border: '1.5px solid var(--hd-border-strong)',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    color: 'var(--hd-text-title)',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    outline: 'none',
+                  }}
+                >
+                  <option value="factura">📄 Factura Electrónica</option>
+                  <option value="boleta">🧾 Boleta de Compra</option>
+                  <option value="guia">🚛 Guía de Remisión</option>
+                  <option value="nota">📝 Nota / Ticket de Entrada</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                  N° de Serie / Factura / Comprobante
+                </label>
+                <input
+                  type="text"
+                  value={editNumComp}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setEditNumComp(e.target.value)}
+                  placeholder="Ej: F001-00045231 o 001-1234"
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'var(--hd-input-bg)',
+                    border: '1.5px solid var(--hd-border-strong)',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    color: 'var(--hd-text-title)',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                  Proveedor / Distribuidor
+                </label>
+                <select
+                  value={editProvId}
+                  onChange={(e) => setEditProvId(Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'var(--hd-input-bg)',
+                    border: '1.5px solid var(--hd-border-strong)',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    color: 'var(--hd-text-title)',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    outline: 'none',
+                  }}
+                >
+                  {distribuidores.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.empresa ? `${d.empresa} (${d.nombre})` : d.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-dim)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                  Notas u Observaciones (Opcional)
+                </label>
+                <textarea
+                  value={editNotas}
+                  onChange={(e) => setEditNotas(e.target.value)}
+                  placeholder="Observaciones de la factura o entrega..."
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'var(--hd-input-bg)',
+                    border: '1.5px solid var(--hd-border-strong)',
+                    borderRadius: '8px',
+                    padding: '8px 12px',
+                    color: 'var(--hd-text-title)',
+                    fontSize: 12,
+                    outline: 'none',
+                    resize: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setCompraEditarCabecera(null)}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1px solid var(--hd-border)',
+                    color: 'var(--hd-text-dim)',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoCabecera}
+                  style={{
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--hd-orange)',
+                    border: 'none',
+                    color: '#FFFFFF',
+                    fontSize: 12,
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    boxShadow: '0 3px 12px var(--hd-orange-glow)',
+                    opacity: guardandoCabecera ? 0.6 : 1,
+                  }}
+                >
+                  {guardandoCabecera ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CORREGIR / ASIGNAR COSTOS DE COMPRA */}
       {compraCorregir && (
