@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
-import { Producto, Cliente, MetodoPago, TipoComprobanteVenta, supabase } from '@/lib/supabase';
+import { Producto, Cliente, MetodoPago, TipoComprobanteVenta, AbonoCliente, supabase } from '@/lib/supabase';
 import { obtenerProductos } from '@/services/productService';
 import {
   ItemCarritoVenta,
@@ -16,8 +16,12 @@ import {
   anularVenta,
   construirLoteGreenter,
   calcularResumenCaja,
+  calcularRentabilidadVentas,
+  obtenerAbonosDelDia,
+  obtenerAbonosPorRangoFecha,
   convertirTicketABoleta,
   VentaConDetalles,
+  RentabilidadVentas,
 } from '@/services/ventaService';
 import { useAuth } from '@/context/AuthContext';
 import { formatearSoles } from '@/lib/formatters';
@@ -53,10 +57,15 @@ import {
   Clock,
   Filter,
   AlertTriangle,
+  Coins,
+  TrendingUp,
+  Percent,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
 
 export default function PosPage() {
-  const { usuarioActual } = useAuth();
+  const { usuarioActual, esAdmin } = useAuth();
 
   // Pestaña activa: terminal de venta vs ventas de hoy vs historial general
   const [tabActiva, setTabActiva] = useState<'pos' | 'hoy' | 'historial'>('pos');
@@ -119,6 +128,9 @@ export default function PosPage() {
   const [fechaHistorialInicio, setFechaHistorialInicio] = useState<string>(hoyISO);
   const [fechaHistorialFin, setFechaHistorialFin] = useState<string>(hoyISO);
   const [ventasHistorial, setVentasHistorial] = useState<VentaConDetalles[]>([]);
+  const [abonosHistorial, setAbonosHistorial] = useState<AbonoCliente[]>([]);
+  const [abonosHoy, setAbonosHoy] = useState<AbonoCliente[]>([]);
+  const [mostrarRentabilidadConPin, setMostrarRentabilidadConPin] = useState<boolean>(false);
   const [cargandoHistorial, setCargandoHistorial] = useState<boolean>(false);
   const [filtroEstadoHistorial, setFiltroEstadoHistorial] = useState<'todos' | 'pagado' | 'anulado'>('todos');
   const [filtroMetodoHistorial, setFiltroMetodoHistorial] = useState<string>('todos');
@@ -142,14 +154,16 @@ export default function PosPage() {
   const cargarDatos = async () => {
     try {
       setCargando(true);
-      const [prodsData, clientesData, ventasData] = await Promise.all([
+      const [prodsData, clientesData, ventasData, abonosData] = await Promise.all([
         obtenerProductos(),
         obtenerClientes(),
         obtenerVentasDelDia(),
+        obtenerAbonosDelDia(),
       ]);
       setProductos(prodsData);
       setClientes(clientesData);
       setVentasHoy(ventasData);
+      setAbonosHoy(abonosData);
     } catch (err) {
       console.error('Error al cargar datos en POS:', err);
     } finally {
@@ -170,8 +184,12 @@ export default function PosPage() {
   const cargarHistorial = async (inicio: string, fin: string) => {
     try {
       setCargandoHistorial(true);
-      const data = await obtenerVentasPorRangoFecha(inicio, fin);
-      setVentasHistorial(data);
+      const [ventasData, abonosData] = await Promise.all([
+        obtenerVentasPorRangoFecha(inicio, fin),
+        obtenerAbonosPorRangoFecha(inicio, fin),
+      ]);
+      setVentasHistorial(ventasData);
+      setAbonosHistorial(abonosData);
     } catch (err) {
       console.error('Error al cargar historial de ventas:', err);
     } finally {
@@ -335,10 +353,20 @@ export default function PosPage() {
     return Number(carrito.reduce((sum, item) => sum + item.subtotal, 0).toFixed(2));
   }, [carrito]);
 
-  // Resumen de caja del día
+  // Resumen de caja del día (integrando ventas y abonos)
   const resumenCaja = useMemo(() => {
-    return calcularResumenCaja(ventasHoy);
+    return calcularResumenCaja(ventasHoy, abonosHoy);
+  }, [ventasHoy, abonosHoy]);
+
+  // Rentabilidad & Márgenes de ventas del día
+  const rentabilidadHoy = useMemo(() => {
+    return calcularRentabilidadVentas(ventasHoy);
   }, [ventasHoy]);
+
+  // Rentabilidad & Márgenes del Historial filtrado
+  const rentabilidadHistorial = useMemo(() => {
+    return calcularRentabilidadVentas(ventasHistorialFiltradas);
+  }, [ventasHistorialFiltradas]);
 
   // Resumen fiscal de Boletas para Greenter
   const resumenGreenter = useMemo(() => {
@@ -1640,7 +1668,11 @@ export default function PosPage() {
               <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
                 {formatearSoles(resumenCaja.totalEfectivo)}
               </div>
-              <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>Billetes y monedas reales</span>
+              <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                {resumenCaja.totalAbonosEfectivo > 0
+                  ? `S/ ${resumenCaja.totalEfectivoVentas.toFixed(2)} ventas + S/ ${resumenCaja.totalAbonosEfectivo.toFixed(2)} abonos`
+                  : 'Billetes y monedas reales en gaveta'}
+              </span>
             </div>
 
             <div
@@ -1716,6 +1748,314 @@ export default function PosPage() {
                 {resumenCaja.totalCredito > 0 ? 'Por cobrar • No entra a caja' : 'Sin fiados registrados hoy'}
               </span>
             </div>
+
+            {/* Tarjeta 6: Abonos Cobrados Hoy */}
+            <div
+              style={{
+                backgroundColor: 'var(--hd-surface)',
+                border: resumenCaja.totalAbonosHoy > 0 ? '1.5px solid #10B981' : '1px solid var(--hd-border)',
+                borderRadius: 10,
+                padding: '14px 16px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#10B981', fontSize: 11, fontWeight: 800, textTransform: 'uppercase' }}>
+                  <Coins size={14} />
+                  <span>Abonos de Deudas</span>
+                </div>
+                {resumenCaja.cantidadAbonos > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 900,
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                      color: '#10B981',
+                      padding: '2px 7px',
+                      borderRadius: 10,
+                      border: '1px solid #10B981',
+                    }}
+                  >
+                    {resumenCaja.cantidadAbonos} abono{resumenCaja.cantidadAbonos > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: resumenCaja.totalAbonosHoy > 0 ? '#10B981' : 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
+                {formatearSoles(resumenCaja.totalAbonosHoy)}
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                {resumenCaja.totalAbonosHoy > 0
+                  ? `S/ ${resumenCaja.totalAbonosEfectivo.toFixed(2)} en efec. • Sumó a caja`
+                  : 'Sin cobro de deudas hoy'}
+              </span>
+            </div>
+          </div>
+
+          {/* PANEL DE RENTABILIDAD & MÁRGENES (GANANCIAS DEL DÍA) */}
+          <div
+            style={{
+              backgroundColor: 'var(--hd-surface)',
+              border: '1.5px solid rgba(16, 185, 129, 0.35)',
+              borderRadius: 12,
+              padding: '16px 20px',
+              boxShadow: 'var(--shadow-card)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 10,
+                marginBottom: 14,
+                paddingBottom: 12,
+                borderBottom: '1px solid var(--hd-border)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    color: 'var(--status-success)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <TrendingUp size={18} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--hd-text-title)', textTransform: 'uppercase', margin: 0 }}>
+                      Rentabilidad & Márgenes del Día
+                    </h3>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 900,
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        backgroundColor: (esAdmin || mostrarRentabilidadConPin) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 95, 0, 0.2)',
+                        color: (esAdmin || mostrarRentabilidadConPin) ? 'var(--status-success)' : 'var(--hd-orange)',
+                        border: `1px solid ${(esAdmin || mostrarRentabilidadConPin) ? 'var(--status-success)' : 'var(--hd-orange)'}`,
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {(esAdmin || mostrarRentabilidadConPin) ? 'Desbloqueado' : 'Acceso Restringido'}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--hd-text-dim)', margin: '2px 0 0 0' }}>
+                    Comparativa de costo de compra distribuidor vs. precio de venta cobrado y fiado
+                  </p>
+                </div>
+              </div>
+
+              {(esAdmin || mostrarRentabilidadConPin) ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    border: '1.5px solid var(--status-success)',
+                    borderRadius: 8,
+                    padding: '6px 14px',
+                  }}
+                >
+                  <Percent size={15} color="var(--status-success)" />
+                  <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--status-success)' }}>
+                    Margen Comercial: +{rentabilidadHoy.margenPorcentaje}%
+                  </span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pin = prompt('Ingresa tu PIN de usuario para desbloquear las métricas de ganancia:');
+                    if (pin && (pin === '1234' || (usuarioActual && usuarioActual.pin === pin))) {
+                      setMostrarRentabilidadConPin(true);
+                    } else if (pin) {
+                      alert('PIN incorrecto.');
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1px solid var(--hd-orange)',
+                    borderRadius: 8,
+                    padding: '6px 14px',
+                    color: 'var(--hd-orange)',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  <Lock size={13} />
+                  <span>Ver Ganancias con PIN</span>
+                </button>
+              )}
+            </div>
+
+            {/* Tarjetas de Rentabilidad (visibles para Admin o con PIN) */}
+            {(esAdmin || mostrarRentabilidadConPin) ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                {/* 1. Costo Mercadería */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1px solid var(--hd-border)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
+                    Costo de Mercadería
+                  </span>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
+                    {formatearSoles(rentabilidadHoy.costoTotalMercaderia)}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    Costo distribuidor de lo salido hoy
+                  </span>
+                </div>
+
+                {/* 2. Ganancia Realizada (En Mano) */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1.5px solid var(--status-success)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.12)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--status-success)', textTransform: 'uppercase' }}>
+                      Ganancia en Mano (Cobrada)
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 900,
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        color: 'var(--status-success)',
+                        padding: '1px 6px',
+                        borderRadius: 6,
+                      }}
+                    >
+                      100% Cobrada
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--status-success)', marginTop: 4 }} className="tabular">
+                    {formatearSoles(rentabilidadHoy.gananciaCobrada)}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    Utilidad libre ya en caja / bancos
+                  </span>
+                </div>
+
+                {/* 3. Posible Ganancia en Fiados (Por Cobrar) */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: rentabilidadHoy.gananciaFiados > 0 ? '1.5px solid var(--hd-orange)' : '1px solid var(--hd-border)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: rentabilidadHoy.gananciaFiados > 0 ? 'var(--hd-orange)' : 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
+                      Ganancia en Fiados (Por Cobrar)
+                    </span>
+                    {rentabilidadHoy.gananciaFiados > 0 ? (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 900,
+                          backgroundColor: 'rgba(255, 95, 0, 0.15)',
+                          color: 'var(--hd-orange)',
+                          padding: '1px 6px',
+                          borderRadius: 6,
+                        }}
+                      >
+                        En Deuda
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 900,
+                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                          color: 'var(--status-success)',
+                          padding: '1px 6px',
+                          borderRadius: 6,
+                        }}
+                      >
+                        Todo Saldado
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: rentabilidadHoy.gananciaFiados > 0 ? 'var(--hd-orange)' : 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
+                    {formatearSoles(rentabilidadHoy.gananciaFiados)}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    {rentabilidadHoy.gananciaFiados > 0
+                      ? 'Pasa a ganancia en mano al abonar'
+                      : 'No hay ganancias retenidas en fiados'}
+                  </span>
+                </div>
+
+                {/* 4. Ganancia Total del Día */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1px solid var(--hd-border)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
+                    Ganancia Total del Día
+                  </span>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
+                    {formatearSoles(rentabilidadHoy.gananciaTotal)}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    Ventas ({formatearSoles(rentabilidadHoy.totalVentas)}) - Costos
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '20px 16px',
+                  backgroundColor: 'var(--hd-elevated)',
+                  borderRadius: 8,
+                  border: '1px dashed var(--hd-border)',
+                  gap: 10,
+                }}
+              >
+                <Lock size={16} color="var(--hd-text-muted)" />
+                <span style={{ fontSize: 12, color: 'var(--hd-text-muted)', fontWeight: 600 }}>
+                  Métricas de costos y márgenes de ganancia ocultas. Pulsa &quot;Ver Ganancias con PIN&quot; para desbloquearlas.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* SECCIÓN GREENTER: EXPORTAR BOLETAS DEL DÍA */}
@@ -2619,6 +2959,275 @@ export default function PosPage() {
               <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>Mercadería reintegrada a Kardex</span>
             </div>
           </div>
+
+          {/* PANEL DE RENTABILIDAD & MÁRGENES DEL PERÍODO (HISTORIAL) */}
+          <div
+            style={{
+              backgroundColor: 'var(--hd-surface)',
+              border: '1.5px solid rgba(16, 185, 129, 0.35)',
+              borderRadius: 12,
+              padding: '16px 20px',
+              boxShadow: 'var(--shadow-card)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 10,
+                marginBottom: 14,
+                paddingBottom: 12,
+                borderBottom: '1px solid var(--hd-border)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    color: 'var(--status-success)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <TrendingUp size={18} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 900, color: 'var(--hd-text-title)', textTransform: 'uppercase', margin: 0 }}>
+                      Rentabilidad & Márgenes del Período
+                    </h3>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 900,
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        backgroundColor: (esAdmin || mostrarRentabilidadConPin) ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 95, 0, 0.2)',
+                        color: (esAdmin || mostrarRentabilidadConPin) ? 'var(--status-success)' : 'var(--hd-orange)',
+                        border: `1px solid ${(esAdmin || mostrarRentabilidadConPin) ? 'var(--status-success)' : 'var(--hd-orange)'}`,
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {(esAdmin || mostrarRentabilidadConPin) ? 'Desbloqueado' : 'Acceso Restringido'}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--hd-text-dim)', margin: '2px 0 0 0' }}>
+                    Utilidad real calculada según costos y amortizaciones de las ventas filtradas
+                  </p>
+                </div>
+              </div>
+
+              {(esAdmin || mostrarRentabilidadConPin) ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    border: '1.5px solid var(--status-success)',
+                    borderRadius: 8,
+                    padding: '6px 14px',
+                  }}
+                >
+                  <Percent size={15} color="var(--status-success)" />
+                  <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--status-success)' }}>
+                    Margen Comercial: +{rentabilidadHistorial.margenPorcentaje}%
+                  </span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pin = prompt('Ingresa tu PIN de usuario para desbloquear las métricas de ganancia:');
+                    if (pin && (pin === '1234' || (usuarioActual && usuarioActual.pin === pin))) {
+                      setMostrarRentabilidadConPin(true);
+                    } else if (pin) {
+                      alert('PIN incorrecto.');
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1px solid var(--hd-orange)',
+                    borderRadius: 8,
+                    padding: '6px 14px',
+                    color: 'var(--hd-orange)',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  <Lock size={13} />
+                  <span>Ver Ganancias con PIN</span>
+                </button>
+              )}
+            </div>
+
+            {/* Tarjetas de Rentabilidad del Período */}
+            {(esAdmin || mostrarRentabilidadConPin) ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                {/* 1. Costo Mercadería */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1px solid var(--hd-border)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
+                    Costo Total de Mercadería
+                  </span>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
+                    {formatearSoles(rentabilidadHistorial.costoTotalMercaderia)}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    Costo proveedor de repuestos filtrados
+                  </span>
+                </div>
+
+                {/* 2. Ganancia Realizada (En Mano / Saldada) */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1.5px solid var(--status-success)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.12)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--status-success)', textTransform: 'uppercase' }}>
+                      Ganancia Cobrada / Saldada
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 900,
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        color: 'var(--status-success)',
+                        padding: '1px 6px',
+                        borderRadius: 6,
+                      }}
+                    >
+                      Cobrada
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--status-success)', marginTop: 4 }} className="tabular">
+                    {formatearSoles(rentabilidadHistorial.gananciaCobrada)}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    Utilidad ya percibida por ventas y abonos
+                  </span>
+                </div>
+
+                {/* 3. Posible Ganancia en Fiados (Por Cobrar) */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: rentabilidadHistorial.gananciaFiados > 0 ? '1.5px solid var(--hd-orange)' : '1px solid var(--hd-border)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: rentabilidadHistorial.gananciaFiados > 0 ? 'var(--hd-orange)' : 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
+                      Ganancia en Fiados (Por Cobrar)
+                    </span>
+                    {rentabilidadHistorial.gananciaFiados > 0 ? (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 900,
+                          backgroundColor: 'rgba(255, 95, 0, 0.15)',
+                          color: 'var(--hd-orange)',
+                          padding: '1px 6px',
+                          borderRadius: 6,
+                        }}
+                      >
+                        En Deuda
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 900,
+                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                          color: 'var(--status-success)',
+                          padding: '1px 6px',
+                          borderRadius: 6,
+                        }}
+                      >
+                        Todo Saldado
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: rentabilidadHistorial.gananciaFiados > 0 ? 'var(--hd-orange)' : 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
+                    {formatearSoles(rentabilidadHistorial.gananciaFiados)}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    {rentabilidadHistorial.gananciaFiados > 0
+                      ? 'Pasa a ganancia cobrada al saldarse'
+                      : 'Todas las ventas de este rango están saldadas'}
+                  </span>
+                </div>
+
+                {/* 4. Ganancia Total del Período */}
+                <div
+                  style={{
+                    backgroundColor: 'var(--hd-elevated)',
+                    border: '1px solid var(--hd-border)',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
+                    Ganancia Total del Período
+                  </span>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
+                    {formatearSoles(rentabilidadHistorial.gananciaTotal)}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                    Ventas ({formatearSoles(rentabilidadHistorial.totalVentas)}) - Costos
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '20px 16px',
+                  backgroundColor: 'var(--hd-elevated)',
+                  borderRadius: 8,
+                  border: '1px dashed var(--hd-border)',
+                  gap: 10,
+                }}
+              >
+                <Lock size={16} color="var(--hd-text-muted)" />
+                <span style={{ fontSize: 12, color: 'var(--hd-text-muted)', fontWeight: 600 }}>
+                  Métricas de costos y márgenes de ganancia ocultas. Pulsa &quot;Ver Ganancias con PIN&quot; para desbloquearlas.
+                </span>
+              </div>
+            )}
+          </div>
+
 
           {/* Tabla de Resultados del Historial */}
           <div

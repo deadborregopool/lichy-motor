@@ -1,4 +1,4 @@
-import { supabase, Venta, DetalleVenta, Cliente, MetodoPago, TipoComprobanteVenta, Producto } from '@/lib/supabase';
+import { supabase, Venta, DetalleVenta, Cliente, MetodoPago, TipoComprobanteVenta, Producto, AbonoCliente } from '@/lib/supabase';
 import { registrarMovimientoKardex } from './kardexService';
 import { recalcularSaldoDeudorCliente } from './clienteService';
 
@@ -37,13 +37,21 @@ export interface VentaConDetalles extends Venta {
       nombre: string;
       codigo: string | null;
       unidad_medida: string;
+      costo_unitario?: number;
     } | null;
   })[];
+  abonos_clientes?: {
+    id?: number;
+    monto_abonado: number;
+    fecha_abono?: string;
+    metodo_pago?: string;
+  }[];
 }
 
 export interface ResumenCajaHoy {
   totalVentas: number;
   totalEfectivo: number;
+  totalEfectivoVentas: number;
   totalYape: number;
   totalPlin: number;
   totalTarjeta: number;
@@ -51,6 +59,21 @@ export interface ResumenCajaHoy {
   totalCredito: number;
   cantidadCredito: number;
   cantidadTransacciones: number;
+  totalAbonosHoy: number;
+  totalAbonosEfectivo: number;
+  totalAbonosDigital: number;
+  cantidadAbonos: number;
+}
+
+export interface RentabilidadVentas {
+  costoTotalMercaderia: number;
+  gananciaTotal: number;
+  gananciaCobrada: number;
+  gananciaFiados: number;
+  margenPorcentaje: number;
+  totalVentas: number;
+  totalFiado: number;
+  totalCobrado: number;
 }
 
 /**
@@ -257,6 +280,12 @@ export async function obtenerVentasDelDia(): Promise<VentaConDetalles[]> {
           es_granel,
           unidad_medida_venta,
           productos:productos(id, nombre, codigo, unidad_medida)
+        ),
+        abonos_clientes(
+          id,
+          monto_abonado,
+          fecha_abono,
+          metodo_pago
         )
       `)
       .gte('fecha_venta', inicioHoy.toISOString())
@@ -460,12 +489,17 @@ export function construirLoteGreenter(boletas: VentaConDetalles[], rucEmpresa = 
 }
 
 /**
- * Calcula el resumen de caja del día para el arqueo / cierre de turno.
+ * Calcula el resumen de caja del día para el arqueo / cierre de turno,
+ * integrando el flujo de ventas y los abonos de clientes recibidos hoy.
  */
-export function calcularResumenCaja(ventas: Venta[]): ResumenCajaHoy {
+export function calcularResumenCaja(
+  ventas: (VentaConDetalles | Venta)[],
+  abonos: AbonoCliente[] = []
+): ResumenCajaHoy {
   const resumen: ResumenCajaHoy = {
     totalVentas: 0,
     totalEfectivo: 0,
+    totalEfectivoVentas: 0,
     totalYape: 0,
     totalPlin: 0,
     totalTarjeta: 0,
@@ -473,8 +507,13 @@ export function calcularResumenCaja(ventas: Venta[]): ResumenCajaHoy {
     totalCredito: 0,
     cantidadCredito: 0,
     cantidadTransacciones: 0,
+    totalAbonosHoy: 0,
+    totalAbonosEfectivo: 0,
+    totalAbonosDigital: 0,
+    cantidadAbonos: 0,
   };
 
+  // 1. Procesar ventas del día
   ventas.forEach((v) => {
     if (v.estado === 'anulado') return;
 
@@ -493,12 +532,12 @@ export function calcularResumenCaja(ventas: Venta[]): ResumenCajaHoy {
       resumen.totalCredito += montoCredito;
       resumen.cantidadCredito++;
 
-      // Solo si el cliente dejó un adelanto en efectivo contante, ese monto suma a caja
+      // Adelanto en efectivo en mostrador
       if (adelantoEfectivo > 0) {
-        resumen.totalEfectivo += adelantoEfectivo;
+        resumen.totalEfectivoVentas += adelantoEfectivo;
       }
     } else if (metodo === 'efectivo') {
-      resumen.totalEfectivo += monto;
+      resumen.totalEfectivoVentas += monto;
     } else if (metodo === 'yape') {
       resumen.totalYape += monto;
     } else if (metodo === 'plin') {
@@ -508,11 +547,121 @@ export function calcularResumenCaja(ventas: Venta[]): ResumenCajaHoy {
     } else if (metodo === 'transferencia') {
       resumen.totalTransferencia += monto;
     } else {
-      resumen.totalEfectivo += monto;
+      resumen.totalEfectivoVentas += monto;
     }
   });
 
+  // 2. Procesar abonos cobrados hoy
+  abonos.forEach((ab) => {
+    const monto = Number(ab.monto_abonado) || 0;
+    resumen.totalAbonosHoy += monto;
+    resumen.cantidadAbonos++;
+
+    const metodo = (ab.metodo_pago || 'efectivo').toLowerCase();
+    if (metodo === 'efectivo') {
+      resumen.totalAbonosEfectivo += monto;
+    } else if (metodo === 'yape') {
+      resumen.totalYape += monto;
+      resumen.totalAbonosDigital += monto;
+    } else if (metodo === 'plin') {
+      resumen.totalPlin += monto;
+      resumen.totalAbonosDigital += monto;
+    } else if (metodo === 'tarjeta') {
+      resumen.totalTarjeta += monto;
+      resumen.totalAbonosDigital += monto;
+    } else if (metodo === 'transferencia') {
+      resumen.totalTransferencia += monto;
+      resumen.totalAbonosDigital += monto;
+    } else {
+      resumen.totalAbonosEfectivo += monto;
+    }
+  });
+
+  // Total efectivo real en gaveta = ventas efectivo + abonos efectivo
+  resumen.totalEfectivo = Number((resumen.totalEfectivoVentas + resumen.totalAbonosEfectivo).toFixed(2));
+  resumen.totalVentas = Number(resumen.totalVentas.toFixed(2));
+  resumen.totalEfectivoVentas = Number(resumen.totalEfectivoVentas.toFixed(2));
+  resumen.totalYape = Number(resumen.totalYape.toFixed(2));
+  resumen.totalPlin = Number(resumen.totalPlin.toFixed(2));
+  resumen.totalTarjeta = Number(resumen.totalTarjeta.toFixed(2));
+  resumen.totalTransferencia = Number(resumen.totalTransferencia.toFixed(2));
+  resumen.totalCredito = Number(resumen.totalCredito.toFixed(2));
+  resumen.totalAbonosHoy = Number(resumen.totalAbonosHoy.toFixed(2));
+  resumen.totalAbonosEfectivo = Number(resumen.totalAbonosEfectivo.toFixed(2));
+  resumen.totalAbonosDigital = Number(resumen.totalAbonosDigital.toFixed(2));
+
   return resumen;
+}
+
+/**
+ * Calcula con precisión contable el costo de la mercadería despachada,
+ * la ganancia cobrada (en mano), la posible ganancia en fiados (por cobrar)
+ * y el margen comercial porcentual global de un conjunto de ventas.
+ */
+export function calcularRentabilidadVentas(ventas: VentaConDetalles[]): RentabilidadVentas {
+  let costoTotalMercaderia = 0;
+  let gananciaTotal = 0;
+  let gananciaCobrada = 0;
+  let gananciaFiados = 0;
+  let totalVentas = 0;
+  let totalFiado = 0;
+  let totalCobrado = 0;
+
+  ventas.forEach((v) => {
+    if (v.estado === 'anulado') return;
+
+    const montoVenta = Number(v.total) || 0;
+    totalVentas += montoVenta;
+
+    // Costo de compra de los repuestos que integran esta venta
+    const costoVenta = (v.detalle_ventas || []).reduce((acc, d) => {
+      const cant = Number(d.cantidad) || 0;
+      const costoU = Number(d.costo_unitario) || Number((d.productos as any)?.costo_unitario) || 0;
+      return acc + (cant * costoU);
+    }, 0);
+
+    costoTotalMercaderia += costoVenta;
+    const gananciaVenta = montoVenta - costoVenta;
+    gananciaTotal += gananciaVenta;
+
+    const metodo = (v.metodo_pago || 'efectivo').toLowerCase();
+
+    if (metodo === 'credito') {
+      const adelanto = Number(v.monto_recibido) || 0;
+      const abonosSum = (v.abonos_clientes || []).reduce(
+        (sum, ab) => sum + (Number(ab.monto_abonado) || 0),
+        0
+      );
+      const totalPagado = Math.min(montoVenta, adelanto + abonosSum);
+      const saldoPendiente = Math.max(0, montoVenta - totalPagado);
+
+      totalCobrado += totalPagado;
+      totalFiado += saldoPendiente;
+
+      const pctPagado = montoVenta > 0 ? (totalPagado / montoVenta) : 1;
+      const gananciaRealizadaEstaVenta = gananciaVenta * pctPagado;
+      const gananciaPendienteEstaVenta = gananciaVenta * (1 - pctPagado);
+
+      gananciaCobrada += gananciaRealizadaEstaVenta;
+      gananciaFiados += gananciaPendienteEstaVenta;
+    } else {
+      totalCobrado += montoVenta;
+      gananciaCobrada += gananciaVenta;
+    }
+  });
+
+  const margenPorcentaje = totalVentas > 0 ? Number(((gananciaTotal / totalVentas) * 100).toFixed(1)) : 0;
+
+  return {
+    costoTotalMercaderia: Number(costoTotalMercaderia.toFixed(2)),
+    gananciaTotal: Number(gananciaTotal.toFixed(2)),
+    gananciaCobrada: Number(gananciaCobrada.toFixed(2)),
+    gananciaFiados: Number(gananciaFiados.toFixed(2)),
+    margenPorcentaje,
+    totalVentas: Number(totalVentas.toFixed(2)),
+    totalFiado: Number(totalFiado.toFixed(2)),
+    totalCobrado: Number(totalCobrado.toFixed(2)),
+  };
 }
 
 /**
@@ -596,6 +745,12 @@ export async function obtenerVentasPorRangoFecha(
           es_granel,
           unidad_medida_venta,
           productos:productos(id, nombre, codigo, unidad_medida)
+        ),
+        abonos_clientes(
+          id,
+          monto_abonado,
+          fecha_abono,
+          metodo_pago
         )
       `)
       .order('fecha_venta', { ascending: false });
@@ -615,6 +770,73 @@ export async function obtenerVentasPorRangoFecha(
     return (data as unknown as VentaConDetalles[]) || [];
   } catch (err) {
     console.error('Excepción al obtener ventas:', err);
+    return [];
+  }
+}
+
+/**
+ * Obtiene los abonos de clientes cobrados el día de hoy.
+ */
+export async function obtenerAbonosDelDia(): Promise<AbonoCliente[]> {
+  try {
+    const inicioHoy = new Date();
+    inicioHoy.setHours(0, 0, 0, 0);
+
+    const { data, error } = await supabase
+      .from('abonos_clientes')
+      .select(`
+        *,
+        cliente:clientes(id, nombre, telefono),
+        ventas(id, numero_comprobante, tipo_comprobante, total)
+      `)
+      .gte('fecha_abono', inicioHoy.toISOString())
+      .order('fecha_abono', { ascending: false });
+
+    if (error) {
+      console.error('Error al consultar abonos del día:', error);
+      return [];
+    }
+
+    return (data as unknown as AbonoCliente[]) || [];
+  } catch (err) {
+    console.error('Excepción al obtener abonos del día:', err);
+    return [];
+  }
+}
+
+/**
+ * Obtiene los abonos de clientes dentro de un rango de fechas.
+ */
+export async function obtenerAbonosPorRangoFecha(
+  fechaInicio?: string,
+  fechaFin?: string
+): Promise<AbonoCliente[]> {
+  try {
+    let query = supabase
+      .from('abonos_clientes')
+      .select(`
+        *,
+        cliente:clientes(id, nombre, telefono),
+        ventas(id, numero_comprobante, tipo_comprobante, total)
+      `)
+      .order('fecha_abono', { ascending: false });
+
+    if (fechaInicio) {
+      query = query.gte('fecha_abono', `${fechaInicio}T00:00:00`);
+    }
+    if (fechaFin) {
+      query = query.lte('fecha_abono', `${fechaFin}T23:59:59`);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('Error al consultar abonos por rango:', error);
+      return [];
+    }
+
+    return (data as unknown as AbonoCliente[]) || [];
+  } catch (err) {
+    console.error('Excepción al obtener abonos por rango:', err);
     return [];
   }
 }
