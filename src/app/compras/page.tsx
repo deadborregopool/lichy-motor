@@ -278,9 +278,9 @@ export default function ComprasPage() {
     if (yaExisteIndex >= 0) {
       const it = itemsEntrada[yaExisteIndex];
       if (it.modo_empaque === 'cajas') {
-        actualizarItemCampo(yaExisteIndex, { cajas: (it.cajas || 1) + 1 });
+        actualizarItemCampo(yaExisteIndex, { cajas: (Number(it.cajas) || 0) + 1 });
       } else {
-        actualizarItemCampo(yaExisteIndex, { cantidad: it.cantidad + 1 });
+        actualizarItemCampo(yaExisteIndex, { cantidad: (Number(it.cantidad) || 0) + 1 });
       }
       setBusquedaProducto('');
       return;
@@ -318,29 +318,39 @@ export default function ComprasPage() {
     const it = { ...copia[index], ...cambios };
 
     if (it.modo_empaque === 'cajas') {
-      const c = Math.max(1, Number(it.cajas) || 1);
-      const uPorCaja = Math.max(1, Number(it.unidades_por_caja) || 1);
+      const c = it.cajas === '' ? '' : (it.cajas === undefined ? 1 : Math.max(0, Number(it.cajas) || 0));
+      const uPorCaja = it.unidades_por_caja === '' ? '' : (it.unidades_por_caja === undefined ? 12 : Math.max(1, Number(it.unidades_por_caja) || 1));
       it.cajas = c;
       it.unidades_por_caja = uPorCaja;
-      it.cantidad = c * uPorCaja;
+
+      const numC = Number(c) || 0;
+      const numU = Number(uPorCaja) || 1;
+      it.cantidad = numC * numU;
 
       if ('costo_por_caja' in cambios) {
-        const cCaja = Math.max(0, Number(it.costo_por_caja) || 0);
+        const cCaja = it.costo_por_caja === '' ? '' : Math.max(0, Number(it.costo_por_caja) || 0);
         it.costo_por_caja = cCaja;
-        it.costo_unitario = Number((cCaja / uPorCaja).toFixed(2));
+        it.costo_unitario = Number(((Number(cCaja) || 0) / numU).toFixed(2));
       } else if ('costo_unitario' in cambios) {
-        const cUnit = Math.max(0, Number(it.costo_unitario) || 0);
+        const cUnit = it.costo_unitario === '' ? '' : Math.max(0, Number(it.costo_unitario) || 0);
         it.costo_unitario = cUnit;
-        it.costo_por_caja = Number((cUnit * uPorCaja).toFixed(2));
+        it.costo_por_caja = Number(((Number(cUnit) || 0) * numU).toFixed(2));
       } else {
-        it.costo_por_caja = Number(((it.costo_unitario || 0) * uPorCaja).toFixed(2));
+        it.costo_por_caja = Number(((Number(it.costo_unitario) || 0) * numU).toFixed(2));
       }
 
-      it.subtotal = Number((it.cantidad * it.costo_unitario).toFixed(2));
+      it.subtotal = Number((it.cantidad * (Number(it.costo_unitario) || 0)).toFixed(2));
     } else {
-      it.cantidad = Math.max(1, Number(it.cantidad) || 1);
-      it.costo_unitario = Math.max(0, Number(it.costo_unitario) || 0);
-      it.subtotal = Number((it.cantidad * it.costo_unitario).toFixed(2));
+      if (it.cantidad === '') {
+        it.cantidad = '';
+        it.subtotal = 0;
+      } else {
+        const cantNum = Math.max(0, parseFloat(String(it.cantidad)) || 0);
+        it.cantidad = cantNum;
+        const cUnit = it.costo_unitario === '' ? '' : Math.max(0, Number(it.costo_unitario) || 0);
+        it.costo_unitario = cUnit;
+        it.subtotal = Number((cantNum * (Number(cUnit) || 0)).toFixed(2));
+      }
     }
 
     copia[index] = it;
@@ -378,13 +388,23 @@ export default function ComprasPage() {
     try {
       setGuardandoCompra(true);
       const provSel = distribuidores.find((d) => d.id === Number(distribuidorSeleccionadoId));
+      const itemsSanitizados = itemsEntrada.map((it) => {
+        const cant = Math.max(1, Number(it.cantidad) || 1);
+        const cUnit = Math.max(0, Number(it.costo_unitario) || 0);
+        return {
+          ...it,
+          cantidad: cant,
+          costo_unitario: cUnit,
+          subtotal: Number((cant * cUnit).toFixed(2)),
+        };
+      });
       await registrarCompra({
         proveedor_id: Number(distribuidorSeleccionadoId),
         proveedor_nombre: provSel?.empresa || provSel?.nombre,
         tipo_comprobante: tipoComprobante,
         numero_comprobante: numeroComprobante,
         notas: notasEntrada,
-        items: itemsEntrada,
+        items: itemsSanitizados,
       });
 
       // Efecto visual de éxito
@@ -1464,12 +1484,13 @@ export default function ComprasPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {itemsEntrada.map((it, idx) => {
                         const esModoCaja = it.modo_empaque === 'cajas';
-                        const costoSubio = it.costo_actual > 0 && it.costo_unitario > it.costo_actual;
-                        const costoBajo = it.costo_actual > 0 && it.costo_unitario < it.costo_actual;
+                        const cUnitNum = Number(it.costo_unitario) || 0;
+                        const costoSubio = it.costo_actual > 0 && cUnitNum > it.costo_actual;
+                        const costoBajo = it.costo_actual > 0 && cUnitNum < it.costo_actual;
                         const esPrimeraCompra = it.costo_actual === 0;
 
                         const precioVentaEfectivo = Number(it.nuevo_precio_venta) || Number(it.precio_venta_actual) || 0;
-                        const gananciaEstimada = precioVentaEfectivo - it.costo_unitario;
+                        const gananciaEstimada = precioVentaEfectivo - cUnitNum;
                         const margenEstimadoPorc = precioVentaEfectivo > 0
                           ? ((gananciaEstimada / precioVentaEfectivo) * 100).toFixed(1)
                           : '0';
@@ -1617,7 +1638,7 @@ export default function ComprasPage() {
                                     >
                                       <button
                                         type="button"
-                                        onClick={() => actualizarItemCampo(idx, { cajas: (it.cajas || 1) - 1 })}
+                                        onClick={() => actualizarItemCampo(idx, { cajas: Math.max(1, (Number(it.cajas) || 1) - 1) })}
                                         style={{
                                           backgroundColor: 'transparent',
                                           border: 'none',
@@ -1631,10 +1652,17 @@ export default function ComprasPage() {
                                       <input
                                         type="number"
                                         min="1"
-                                        value={it.cajas || 1}
-                                        onChange={(e) =>
-                                          actualizarItemCampo(idx, { cajas: parseFloat(e.target.value) || 1 })
-                                        }
+                                        value={it.cajas ?? ''}
+                                        onFocus={(e) => e.target.select()}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          actualizarItemCampo(idx, { cajas: val === '' ? '' : parseFloat(val) });
+                                        }}
+                                        onBlur={() => {
+                                          if (it.cajas === '' || Number(it.cajas) < 1) {
+                                            actualizarItemCampo(idx, { cajas: 1 });
+                                          }
+                                        }}
                                         style={{
                                           width: '100%',
                                           textAlign: 'center',
@@ -1648,7 +1676,7 @@ export default function ComprasPage() {
                                       />
                                       <button
                                         type="button"
-                                        onClick={() => actualizarItemCampo(idx, { cajas: (it.cajas || 1) + 1 })}
+                                        onClick={() => actualizarItemCampo(idx, { cajas: (Number(it.cajas) || 0) + 1 })}
                                         style={{
                                           backgroundColor: 'transparent',
                                           border: 'none',
@@ -1670,12 +1698,19 @@ export default function ComprasPage() {
                                     <input
                                       type="number"
                                       min="1"
-                                      value={it.unidades_por_caja || 12}
-                                      onChange={(e) =>
+                                      value={it.unidades_por_caja ?? ''}
+                                      onFocus={(e) => e.target.select()}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
                                         actualizarItemCampo(idx, {
-                                          unidades_por_caja: parseFloat(e.target.value) || 1,
-                                        })
-                                      }
+                                          unidades_por_caja: val === '' ? '' : parseFloat(val),
+                                        });
+                                      }}
+                                      onBlur={() => {
+                                        if (it.unidades_por_caja === '' || Number(it.unidades_por_caja) < 1) {
+                                          actualizarItemCampo(idx, { unidades_por_caja: 1 });
+                                        }
+                                      }}
                                       style={{
                                         width: '100%',
                                         maxWidth: 110,
@@ -1705,12 +1740,19 @@ export default function ComprasPage() {
                                         type="number"
                                         min="0"
                                         step="0.5"
-                                        value={it.costo_por_caja || ''}
-                                        onChange={(e) =>
+                                        value={it.costo_por_caja ?? ''}
+                                        onFocus={(e) => e.target.select()}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
                                           actualizarItemCampo(idx, {
-                                            costo_por_caja: parseFloat(e.target.value) || 0,
-                                          })
-                                        }
+                                            costo_por_caja: val === '' ? '' : parseFloat(val),
+                                          });
+                                        }}
+                                        onBlur={() => {
+                                          if (it.costo_por_caja === '' || isNaN(Number(it.costo_por_caja))) {
+                                            actualizarItemCampo(idx, { costo_por_caja: 0 });
+                                          }
+                                        }}
                                         placeholder="0.00"
                                         style={{
                                           width: '100%',
@@ -1757,7 +1799,7 @@ export default function ComprasPage() {
                                     <strong style={{ color: 'var(--hd-text-title)' }}>
                                       {it.cantidad} {it.unidad_medida}(s) que van al stock
                                     </strong>{' '}
-                                    a <strong style={{ color: 'var(--hd-orange)' }}>{formatearSoles(it.costo_unitario)} c/u</strong>
+                                    a <strong style={{ color: 'var(--hd-orange)' }}>{formatearSoles(cUnitNum)} c/u</strong>
                                   </span>
                                 </div>
                               </div>
@@ -1790,7 +1832,7 @@ export default function ComprasPage() {
                                   >
                                     <button
                                       type="button"
-                                      onClick={() => actualizarItemCampo(idx, { cantidad: it.cantidad - 1 })}
+                                      onClick={() => actualizarItemCampo(idx, { cantidad: Math.max(1, (Number(it.cantidad) || 1) - 1) })}
                                       style={{
                                         backgroundColor: 'transparent',
                                         border: 'none',
@@ -1804,12 +1846,19 @@ export default function ComprasPage() {
                                     <input
                                       type="number"
                                       min="1"
-                                      value={it.cantidad}
-                                      onChange={(e) =>
-                                        actualizarItemCampo(idx, { cantidad: parseFloat(e.target.value) || 1 })
-                                      }
+                                      value={it.cantidad ?? ''}
+                                      onFocus={(e) => e.target.select()}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        actualizarItemCampo(idx, { cantidad: val === '' ? '' : parseFloat(val) });
+                                      }}
+                                      onBlur={() => {
+                                        if (it.cantidad === '' || Number(it.cantidad) < 1) {
+                                          actualizarItemCampo(idx, { cantidad: 1 });
+                                        }
+                                      }}
                                       style={{
-                                        width: 46,
+                                        width: 52,
                                         textAlign: 'center',
                                         background: 'none',
                                         border: 'none',
@@ -1821,7 +1870,7 @@ export default function ComprasPage() {
                                     />
                                     <button
                                       type="button"
-                                      onClick={() => actualizarItemCampo(idx, { cantidad: it.cantidad + 1 })}
+                                      onClick={() => actualizarItemCampo(idx, { cantidad: (Number(it.cantidad) || 0) + 1 })}
                                       style={{
                                         backgroundColor: 'transparent',
                                         border: 'none',
@@ -1848,12 +1897,20 @@ export default function ComprasPage() {
                                       type="number"
                                       min="0"
                                       step="0.01"
-                                      value={it.costo_unitario}
-                                      onChange={(e) =>
+                                      value={it.costo_unitario ?? ''}
+                                      onFocus={(e) => e.target.select()}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
                                         actualizarItemCampo(idx, {
-                                          costo_unitario: parseFloat(e.target.value) || 0,
-                                        })
-                                      }
+                                          costo_unitario: val === '' ? '' : parseFloat(val),
+                                        });
+                                      }}
+                                      onBlur={() => {
+                                        if (it.costo_unitario === '' || isNaN(Number(it.costo_unitario))) {
+                                          actualizarItemCampo(idx, { costo_unitario: 0 });
+                                        }
+                                      }}
+                                      placeholder="0.00"
                                       style={{
                                         width: '100%',
                                         textAlign: 'right',
@@ -1897,7 +1954,7 @@ export default function ComprasPage() {
                                     }}
                                   >
                                     <span style={{ fontSize: 12, fontWeight: 900, color: 'var(--hd-orange)' }} className="tabular">
-                                      {formatearSoles(it.costo_unitario)}
+                                      {formatearSoles(cUnitNum)}
                                     </span>
                                     <span
                                       style={{
@@ -1936,12 +1993,12 @@ export default function ComprasPage() {
                                   <span>⚠️ </span>
                                   {costoSubio ? (
                                     <span>
-                                      El costo subió a {formatearSoles(it.costo_unitario)}. Precio mostrador actual:{' '}
+                                      El costo subió a {formatearSoles(cUnitNum)}. Precio mostrador actual:{' '}
                                       <strong>{formatearSoles(it.precio_venta_actual || 0)}</strong>
                                     </span>
                                   ) : esPrimeraCompra ? (
                                     <span>
-                                      Primer ingreso de mercadería a {formatearSoles(it.costo_unitario)}. Revisa tu precio de venta:
+                                      Primer ingreso de mercadería a {formatearSoles(cUnitNum)}. Revisa tu precio de venta:
                                     </span>
                                   ) : (
                                     <span>

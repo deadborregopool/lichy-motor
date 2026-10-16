@@ -10,11 +10,11 @@ export interface ItemEntradaCompra {
   precio_venta_actual?: number;
   nuevo_precio_venta?: number;
   modo_empaque?: 'unidades' | 'cajas';
-  cajas?: number;
-  unidades_por_caja?: number;
-  costo_por_caja?: number;
-  cantidad: number; // Unidades totales que ingresan al stock
-  costo_unitario: number; // Costo unitario real de esta compra (reposición)
+  cajas?: number | string;
+  unidades_por_caja?: number | string;
+  costo_por_caja?: number | string;
+  cantidad: number | string; // Unidades totales que ingresan al stock
+  costo_unitario: number | string; // Costo unitario real de esta compra (reposición)
   subtotal: number;
   nuevo_costo_promedio?: number;
 }
@@ -101,13 +101,17 @@ export async function registrarCompra(datos: DatosRegistrarCompra): Promise<Comp
   }
 
   // 2. Insertar detalles de compra
-  const detallesPayload = datos.items.map((it) => ({
-    compra_id: compra.id,
-    producto_id: it.producto_id,
-    cantidad: it.cantidad,
-    costo_unitario: it.costo_unitario,
-    subtotal: it.subtotal,
-  }));
+  const detallesPayload = datos.items.map((it) => {
+    const cant = Math.max(1, Number(it.cantidad) || 1);
+    const cUnit = Math.max(0, Number(it.costo_unitario) || 0);
+    return {
+      compra_id: compra.id,
+      producto_id: it.producto_id,
+      cantidad: cant,
+      costo_unitario: cUnit,
+      subtotal: Number((cant * cUnit).toFixed(2)),
+    };
+  });
 
   const { error: errorDetalles } = await supabase
     .from('detalle_compras')
@@ -120,6 +124,9 @@ export async function registrarCompra(datos: DatosRegistrarCompra): Promise<Comp
 
   // 3. Actualizar productos: aplicar Costo Promedio Ponderado e incrementar Stock
   for (const it of datos.items) {
+    const cantItem = Math.max(1, Number(it.cantidad) || 1);
+    const costoUnitItem = Math.max(0, Number(it.costo_unitario) || 0);
+
     // Obtener estado fresco del producto
     const { data: prodData } = await supabase
       .from('productos')
@@ -129,18 +136,18 @@ export async function registrarCompra(datos: DatosRegistrarCompra): Promise<Comp
 
     const stockActual = Number(prodData?.stock_actual) || 0;
     const costoActual = Number(prodData?.costo_unitario) || 0;
-    const nuevoStock = stockActual + it.cantidad;
+    const nuevoStock = stockActual + cantItem;
 
     // Estrategia Combinada Anti-Inflación (Costo de Reposición):
     // 1. Si el producto tenía costo 0 o el nuevo costo subió: adopta el último costo (reposición).
     // 2. Si el costo bajó (compra promocional): promedia con el stock previo para no devaluar inventario anterior.
-    let costoFinal = it.costo_unitario;
-    if (costoActual > 0 && it.costo_unitario < costoActual) {
+    let costoFinal = costoUnitItem;
+    if (costoActual > 0 && costoUnitItem < costoActual) {
       const { nuevoCostoUnitario } = calcularCostoPromedio(
         stockActual,
         costoActual,
-        it.cantidad,
-        it.costo_unitario
+        cantItem,
+        costoUnitItem
       );
       costoFinal = nuevoCostoUnitario;
     }
@@ -191,7 +198,7 @@ export async function registrarCompra(datos: DatosRegistrarCompra): Promise<Comp
       tipo_stock: 'CERRADO',
       comprobante_tipo: datos.tipo_comprobante?.toUpperCase() || 'FACTURA',
       comprobante_numero: datos.numero_comprobante || `COM-${compra.id}`,
-      cantidad_entrada: it.cantidad,
+      cantidad_entrada: cantItem,
       cantidad_salida: 0,
       saldo_resultante: nuevoStock,
       costo_unitario: Number(costoFinal.toFixed(2)),
