@@ -1601,7 +1601,7 @@ export default function PosPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
               gap: 12,
             }}
           >
@@ -1615,7 +1615,7 @@ export default function PosPage() {
               }}
             >
               <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--hd-text-muted)', textTransform: 'uppercase' }}>
-                Total Ventas Hoy
+                Total Facturado Hoy
               </span>
               <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--hd-orange)', marginTop: 4 }} className="tabular">
                 {formatearSoles(resumenCaja.totalVentas)}
@@ -1640,7 +1640,7 @@ export default function PosPage() {
               <div style={{ fontSize: 22, fontWeight: 900, color: 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
                 {formatearSoles(resumenCaja.totalEfectivo)}
               </div>
-              <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>Billetes y monedas</span>
+              <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>Billetes y monedas reales</span>
             </div>
 
             <div
@@ -1677,6 +1677,44 @@ export default function PosPage() {
                 {formatearSoles(resumenCaja.totalTarjeta + resumenCaja.totalTransferencia)}
               </div>
               <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>POS & Bancos</span>
+            </div>
+
+            {/* Tarjeta 5: Fiados del Día (Crédito por cobrar) */}
+            <div
+              style={{
+                backgroundColor: 'var(--hd-surface)',
+                border: resumenCaja.totalCredito > 0 ? '1.5px solid var(--hd-orange)' : '1px solid var(--hd-border)',
+                borderRadius: 10,
+                padding: '14px 16px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--hd-orange)', fontSize: 11, fontWeight: 800, textTransform: 'uppercase' }}>
+                  <Clock size={14} />
+                  <span>Fiados del Día</span>
+                </div>
+                {resumenCaja.cantidadCredito > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 900,
+                      backgroundColor: 'rgba(255, 95, 0, 0.15)',
+                      color: 'var(--hd-orange)',
+                      padding: '2px 7px',
+                      borderRadius: 10,
+                      border: '1px solid var(--hd-orange)',
+                    }}
+                  >
+                    {resumenCaja.cantidadCredito} fiado{resumenCaja.cantidadCredito > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: resumenCaja.totalCredito > 0 ? 'var(--hd-orange)' : 'var(--hd-text-title)', marginTop: 4 }} className="tabular">
+                {formatearSoles(resumenCaja.totalCredito)}
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--hd-text-dim)' }}>
+                {resumenCaja.totalCredito > 0 ? 'Por cobrar • No entra a caja' : 'Sin fiados registrados hoy'}
+              </span>
             </div>
           </div>
 
@@ -2017,13 +2055,14 @@ export default function PosPage() {
                               fontSize: 10,
                               fontWeight: 800,
                               textTransform: 'uppercase',
-                              backgroundColor: 'var(--hd-elevated)',
+                              backgroundColor: v.metodo_pago === 'credito' ? 'rgba(255, 95, 0, 0.15)' : 'var(--hd-elevated)',
+                              border: v.metodo_pago === 'credito' ? '1px solid var(--hd-orange)' : '1px solid var(--hd-border)',
                               padding: '2px 6px',
                               borderRadius: 4,
-                              color: 'var(--hd-text-title)',
+                              color: v.metodo_pago === 'credito' ? 'var(--hd-orange)' : 'var(--hd-text-title)',
                             }}
                           >
-                            {v.metodo_pago || 'efectivo'}
+                            {v.metodo_pago === 'credito' ? 'Crédito / Fiado' : (v.metodo_pago || 'efectivo')}
                           </span>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: v.estado === 'anulado' ? 'var(--hd-text-dim)' : 'var(--hd-text-title)', textDecoration: v.estado === 'anulado' ? 'line-through' : 'none' }} className="tabular">
@@ -2035,14 +2074,34 @@ export default function PosPage() {
                               fontSize: 10,
                               fontWeight: 900,
                               textTransform: 'uppercase',
-                              backgroundColor: v.estado === 'anulado' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                              color: v.estado === 'anulado' ? 'var(--status-danger)' : 'var(--status-success)',
-                              border: `1px solid ${v.estado === 'anulado' ? 'var(--status-danger)' : 'var(--status-success)'}`,
+                              backgroundColor:
+                                v.estado === 'anulado'
+                                  ? 'rgba(239, 68, 68, 0.15)'
+                                  : v.estado === 'pendiente_pago' || v.metodo_pago === 'credito'
+                                  ? 'rgba(255, 95, 0, 0.15)'
+                                  : 'rgba(16, 185, 129, 0.15)',
+                              color:
+                                v.estado === 'anulado'
+                                  ? 'var(--status-danger)'
+                                  : v.estado === 'pendiente_pago' || v.metodo_pago === 'credito'
+                                  ? 'var(--hd-orange)'
+                                  : 'var(--status-success)',
+                              border: `1px solid ${
+                                v.estado === 'anulado'
+                                  ? 'var(--status-danger)'
+                                  : v.estado === 'pendiente_pago' || v.metodo_pago === 'credito'
+                                  ? 'var(--hd-orange)'
+                                  : 'var(--status-success)'
+                              }`,
                               padding: '2px 7px',
                               borderRadius: 4,
                             }}
                           >
-                            {v.estado === 'anulado' ? 'Anulado' : 'Pagado'}
+                            {v.estado === 'anulado'
+                              ? 'Anulado'
+                              : v.estado === 'pendiente_pago' || v.metodo_pago === 'credito'
+                              ? 'Fiado / Por Cobrar'
+                              : 'Pagado'}
                           </span>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'center' }}>
@@ -2657,13 +2716,14 @@ export default function PosPage() {
                               fontSize: 10,
                               fontWeight: 800,
                               textTransform: 'uppercase',
-                              backgroundColor: 'var(--hd-elevated)',
+                              backgroundColor: v.metodo_pago === 'credito' ? 'rgba(255, 95, 0, 0.15)' : 'var(--hd-elevated)',
+                              border: v.metodo_pago === 'credito' ? '1px solid var(--hd-orange)' : '1px solid var(--hd-border)',
                               padding: '2px 6px',
                               borderRadius: 4,
-                              color: 'var(--hd-text-title)',
+                              color: v.metodo_pago === 'credito' ? 'var(--hd-orange)' : 'var(--hd-text-title)',
                             }}
                           >
-                            {v.metodo_pago || 'efectivo'}
+                            {v.metodo_pago === 'credito' ? 'Crédito / Fiado' : (v.metodo_pago || 'efectivo')}
                           </span>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: v.estado === 'anulado' ? 'var(--hd-text-dim)' : 'var(--hd-text-title)', textDecoration: v.estado === 'anulado' ? 'line-through' : 'none' }} className="tabular">
@@ -2675,14 +2735,34 @@ export default function PosPage() {
                               fontSize: 10,
                               fontWeight: 900,
                               textTransform: 'uppercase',
-                              backgroundColor: v.estado === 'anulado' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                              color: v.estado === 'anulado' ? 'var(--status-danger)' : 'var(--status-success)',
-                              border: `1px solid ${v.estado === 'anulado' ? 'var(--status-danger)' : 'var(--status-success)'}`,
+                              backgroundColor:
+                                v.estado === 'anulado'
+                                  ? 'rgba(239, 68, 68, 0.15)'
+                                  : v.estado === 'pendiente_pago' || v.metodo_pago === 'credito'
+                                  ? 'rgba(255, 95, 0, 0.15)'
+                                  : 'rgba(16, 185, 129, 0.15)',
+                              color:
+                                v.estado === 'anulado'
+                                  ? 'var(--status-danger)'
+                                  : v.estado === 'pendiente_pago' || v.metodo_pago === 'credito'
+                                  ? 'var(--hd-orange)'
+                                  : 'var(--status-success)',
+                              border: `1px solid ${
+                                v.estado === 'anulado'
+                                  ? 'var(--status-danger)'
+                                  : v.estado === 'pendiente_pago' || v.metodo_pago === 'credito'
+                                  ? 'var(--hd-orange)'
+                                  : 'var(--status-success)'
+                              }`,
                               padding: '2px 7px',
                               borderRadius: 4,
                             }}
                           >
-                            {v.estado === 'anulado' ? 'Anulado' : 'Pagado'}
+                            {v.estado === 'anulado'
+                              ? 'Anulado'
+                              : v.estado === 'pendiente_pago' || v.metodo_pago === 'credito'
+                              ? 'Fiado / Por Cobrar'
+                              : 'Pagado'}
                           </span>
                           {v.estado === 'anulado' && v.notas && (
                             <div style={{ fontSize: 9, color: 'var(--hd-text-dim)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.notas}>

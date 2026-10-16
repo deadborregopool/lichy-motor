@@ -47,6 +47,8 @@ export interface ResumenCajaHoy {
   totalPlin: number;
   totalTarjeta: number;
   totalTransferencia: number;
+  totalCredito: number;
+  cantidadCredito: number;
   cantidadTransacciones: number;
 }
 
@@ -467,20 +469,46 @@ export function calcularResumenCaja(ventas: Venta[]): ResumenCajaHoy {
     totalPlin: 0,
     totalTarjeta: 0,
     totalTransferencia: 0,
-    cantidadTransacciones: ventas.length,
+    totalCredito: 0,
+    cantidadCredito: 0,
+    cantidadTransacciones: 0,
   };
 
   ventas.forEach((v) => {
+    if (v.estado === 'anulado') return;
+
+    resumen.cantidadTransacciones++;
     const monto = Number(v.total) || 0;
     resumen.totalVentas += monto;
 
     const metodo = (v.metodo_pago || 'efectivo').toLowerCase();
-    if (metodo === 'efectivo') resumen.totalEfectivo += monto;
-    else if (metodo === 'yape') resumen.totalYape += monto;
-    else if (metodo === 'plin') resumen.totalPlin += monto;
-    else if (metodo === 'tarjeta') resumen.totalTarjeta += monto;
-    else if (metodo === 'transferencia') resumen.totalTransferencia += monto;
-    else resumen.totalEfectivo += monto;
+    if (metodo === 'credito') {
+      const montoCredito =
+        Number(v.monto_credito) > 0
+          ? Number(v.monto_credito)
+          : Math.max(0, monto - (Number(v.monto_recibido) || 0));
+      const adelantoEfectivo = Number(v.monto_recibido) || 0;
+
+      resumen.totalCredito += montoCredito;
+      resumen.cantidadCredito++;
+
+      // Solo si el cliente dejó un adelanto en efectivo contante, ese monto suma a caja
+      if (adelantoEfectivo > 0) {
+        resumen.totalEfectivo += adelantoEfectivo;
+      }
+    } else if (metodo === 'efectivo') {
+      resumen.totalEfectivo += monto;
+    } else if (metodo === 'yape') {
+      resumen.totalYape += monto;
+    } else if (metodo === 'plin') {
+      resumen.totalPlin += monto;
+    } else if (metodo === 'tarjeta') {
+      resumen.totalTarjeta += monto;
+    } else if (metodo === 'transferencia') {
+      resumen.totalTransferencia += monto;
+    } else {
+      resumen.totalEfectivo += monto;
+    }
   });
 
   return resumen;
