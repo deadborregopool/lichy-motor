@@ -1,5 +1,6 @@
 import { supabase, Venta, DetalleVenta, Cliente, MetodoPago, TipoComprobanteVenta, Producto } from '@/lib/supabase';
 import { registrarMovimientoKardex } from './kardexService';
+import { recalcularSaldoDeudorCliente } from './clienteService';
 
 export interface ItemCarritoVenta {
   producto: Producto;
@@ -726,26 +727,7 @@ export async function anularVenta(datos: {
       }
     }
 
-    // 3. Si la venta fue a crédito o generó deuda, descontarla del saldo deudor del cliente
-    if (venta.cliente_id && (venta.metodo_pago === 'credito' || Number(venta.monto_credito) > 0)) {
-      const deudaDeVenta = Number(venta.monto_credito) || Number(venta.total);
-      const { data: c } = await supabase
-        .from('clientes')
-        .select('saldo_deudor')
-        .eq('id', venta.cliente_id)
-        .single();
-
-      if (c) {
-        const saldoActual = Number(c.saldo_deudor) || 0;
-        const nuevoSaldo = Math.max(0, Number((saldoActual - deudaDeVenta).toFixed(2)));
-        await supabase
-          .from('clientes')
-          .update({ saldo_deudor: nuevoSaldo })
-          .eq('id', venta.cliente_id);
-      }
-    }
-
-    // 4. Marcar la venta como anulada en la tabla ventas
+    // 3. Marcar la venta como anulada en la tabla ventas primero
     const notaAnulacion = `[ANULADO el ${new Date().toLocaleDateString('es-PE')} por ${usuarioNombre || 'Admin'}: ${motivo.trim()}]`;
     const notasActualizadas = venta.notas ? `${venta.notas} | ${notaAnulacion}` : notaAnulacion;
 
@@ -760,6 +742,21 @@ export async function anularVenta(datos: {
     if (updateErr) {
       console.error('Error al actualizar estado de la venta:', updateErr);
       return { success: false, error: updateErr.message };
+    }
+
+    // 4. Si había abonos vinculados a esta venta, eliminarlos (la venta fue cancelada/devuelta)
+    const { error: delAbonosErr } = await supabase
+      .from('abonos_clientes')
+      .delete()
+      .eq('venta_id', ventaId);
+
+    if (delAbonosErr) {
+      console.error('Error al eliminar abonos vinculados a la venta anulada:', delAbonosErr);
+    }
+
+    // 5. Si la venta pertenece a un cliente, recalcular su saldo deudor de forma limpia y exacta
+    if (venta.cliente_id) {
+      await recalcularSaldoDeudorCliente(venta.cliente_id);
     }
 
     return { success: true };

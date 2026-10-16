@@ -342,7 +342,8 @@ export async function obtenerHistorialCliente(clienteId: number): Promise<Histor
             id,
             numero_comprobante,
             tipo_comprobante,
-            total
+            total,
+            estado
           )
         `)
         .eq('cliente_id', clienteId)
@@ -355,23 +356,33 @@ export async function obtenerHistorialCliente(clienteId: number): Promise<Histor
 
     const ventasRaw = resVentas.data || [];
     const abonosRaw = (resAbonos.data || []) as any[];
-    const abonos: AbonoCliente[] = abonosRaw.map((ab: any) => ({
-      id: ab.id,
-      cliente_id: ab.cliente_id,
-      venta_id: ab.venta_id,
-      monto_abonado: Number(ab.monto_abonado) || 0,
-      metodo_pago: ab.metodo_pago,
-      fecha_abono: ab.fecha_abono,
-      usuario_nombre: ab.usuario_nombre,
-      notas: ab.notas,
-      ventas: Array.isArray(ab.ventas) ? (ab.ventas[0] || null) : (ab.ventas || null),
-    }));
+    const abonos: AbonoCliente[] = abonosRaw
+      .filter((ab: any) => {
+        const v = Array.isArray(ab.ventas) ? ab.ventas[0] : ab.ventas;
+        return !v || v.estado !== 'anulado';
+      })
+      .map((ab: any) => ({
+        id: ab.id,
+        cliente_id: ab.cliente_id,
+        venta_id: ab.venta_id,
+        monto_abonado: Number(ab.monto_abonado) || 0,
+        metodo_pago: ab.metodo_pago,
+        fecha_abono: ab.fecha_abono,
+        usuario_nombre: ab.usuario_nombre,
+        notas: ab.notas,
+        ventas: Array.isArray(ab.ventas) ? (ab.ventas[0] || null) : (ab.ventas || null),
+      }));
 
     const comprasPendientes: CompraCliente[] = [];
     const comprasPagadas: CompraCliente[] = [];
     let deudaTotal = 0;
 
     ventasRaw.forEach((v: any) => {
+      // Ignorar compras anuladas/devueltas para que no computen como deuda
+      if (v.estado === 'anulado') {
+        return;
+      }
+
       // Calcular abonos aplicados a esta venta específica
       const abonosEstaVenta: any[] = v.abonos_clientes || [];
       const totalAbonado = abonosEstaVenta.reduce(
@@ -567,3 +578,61 @@ export async function obtenerResumenCartera(): Promise<ResumenCarteraClientes> {
     };
   }
 }
+
+/**
+ * Recalcula de forma atómica y precisa el saldo deudor de un cliente sumando
+ * los saldos pendientes de todas sus ventas activas (no anuladas) a crédito,
+ * descontando los abonos registrados, y actualiza la tabla clientes.
+ */
+export async function recalcularSaldoDeudorCliente(clienteId: number): Promise<number> {
+  try {
+    const { data: ventas, error } = await supabase
+      .from('ventas')
+      .select(`
+        id,
+        total,
+        monto_recibido,
+        monto_credito,
+        estado,
+        abonos_clientes (
+          monto_abonado
+        )
+      `)
+      .eq('cliente_id', clienteId)
+      .neq('estado', 'anulado');
+
+    if (error) {
+      console.error('Error al consultar ventas para recalcular saldo deudor:', error);
+      return 0;
+    }
+
+    let deudaTotal = 0;
+
+    (ventas || []).forEach((v: any) => {
+      const totalVenta = Number(v.total) || 0;
+      const inicial = Number(v.monto_recibido) || 0;
+      const abonosSum = (v.abonos_clientes || []).reduce(
+        (sum: number, ab: any) => sum + (Number(ab.monto_abonado) || 0),
+        0
+      );
+      const saldoPendiente = Math.max(0, Number((totalVenta - inicial - abonosSum).toFixed(2)));
+
+      if (v.estado === 'pendiente_pago' || saldoPendiente > 0) {
+        deudaTotal += saldoPendiente;
+      }
+    });
+
+    const saldoCalculado = Number(deudaTotal.toFixed(2));
+
+    await supabase
+      .from('clientes')
+      .update({ saldo_deudor: saldoCalculado })
+      .eq('id', clienteId);
+
+    return saldoCalculado;
+  } catch (err) {
+    console.error('Excepción al recalcular saldo deudor del cliente:', err);
+    return 0;
+  }
+}
+
